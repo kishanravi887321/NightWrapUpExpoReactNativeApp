@@ -54,8 +54,8 @@ export function LibraryScreen({
             <Text style={styles.eyebrow}>Good evening</Text>
             <Text style={styles.headerTitle}>NightWrapUp</Text>
           </View>
-          <Pressable style={styles.iconButton} onPress={onLogout}>
-            <Text style={styles.iconButtonText}>↻</Text>
+          <Pressable style={styles.logoutButton} onPress={onLogout} accessibilityRole="button">
+            <Text style={styles.logoutButtonText}>Log out</Text>
           </Pressable>
         </View>
 
@@ -233,19 +233,20 @@ const styles = StyleSheet.create({
     fontSize: 26,
     fontWeight: '800',
   },
-  iconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
-    backgroundColor: 'rgba(148, 163, 184, 0.15)',
+  logoutButton: {
+    minWidth: 72,
+    height: 40,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: 'rgba(248, 113, 113, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.2)',
+    borderColor: 'rgba(248, 113, 113, 0.32)',
   },
-  iconButtonText: {
-    color: '#d9e8ff',
-    fontSize: 18,
+  logoutButtonText: {
+    color: '#fda4af',
+    fontSize: 12,
     fontWeight: '700',
   },
   inlineError: {
