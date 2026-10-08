@@ -66,6 +66,7 @@ export type SongItem = {
   artist: string;
   duration: number;
   thumbnail: string;
+  fallbackThumbnail: string;
   audioUrl?: string;
   tag: string;
   mood: string;

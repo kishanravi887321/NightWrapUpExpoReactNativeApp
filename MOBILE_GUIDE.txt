@@ -1,0 +1,538 @@
+NightWrapUp Mobile App Integration Guide
+========================================
+
+Production API base URL:
+https://apinightwrapup.ziax.online/api
+
+The mobile app does not use Firebase. A user must first sign in on the
+NightWrapUp website and choose an 8-digit numeric mobile key in:
+
+Profile -> Mobile listening -> Save mobile key
+
+The key is stored directly because it is designed as a recoverable mobile
+access code, not as the user's normal website password. The website Profile
+screen must be able to retrieve the current 8-digit code and display it when
+the user presses the eye button. This also lets the user copy the same code
+to the phone later without generating a replacement. The server does not
+generate the key; the user chooses it.
+
+If the code were hashed, the server could verify a submitted value but could
+not recover the original value to display it. The only option would be to
+force the user to regenerate a new code whenever they forgot or hid the old
+one. Direct storage is therefore a deliberate convenience tradeoff for this
+small personal/fun project. It is not appropriate for a real password:
+production passwords should always be hashed and should never be recoverable
+or displayed.
+
+The mobile code is still limited to exactly 8 digits, can be changed by the user,
+and is removed when the user deletes it. Anyone with database access
+could read it, so keep the database and deployment credentials protected.
+
+
+1. Choose or change the mobile key
+----------------
+
+POST /auth/mobile-key
+Content-Type: application/json
+
+Request:
+{
+  "secretKey": "48291637"
+}
+
+This website-only endpoint saves the user's chosen 8-digit key. It requires
+the website authentication cookie. Changing the key invalidates mobile
+refresh sessions.
+
+
+2. Mobile login
+----------------
+
+POST /auth/mobile-login
+Content-Type: application/json
+
+Request:
+{
+  "email": "user@example.com",
+  "secretKey": "48291637"
+}
+
+The secretKey must contain exactly 8 numeric digits.
+
+Success response:
+{
+  "success": true,
+  "data": {
+    "user": {
+      "id": "USER_ID",
+      "email": "user@example.com",
+      "createdAt": "DATE",
+      "updatedAt": "DATE",
+      "mobileAccessEnabled": true,
+      "mobileSecretKey": "48291637",
+      "mobileSecretKeyCreatedAt": "DATE",
+      "mobileSecretKeyLastUsedAt": "DATE"
+    },
+    "accessToken": "ACCESS_TOKEN",
+    "refreshToken": "REFRESH_TOKEN"
+  }
+}
+
+Store both tokens securely on the phone. Do not log or display them.
+The access token lasts 15 days by default. The refresh token lasts 30 days
+by default. The server rotates the refresh token, so replace the stored
+refresh token after every successful mobile refresh.
+
+
+3. Refresh mobile session
+-------------------------
+
+POST /auth/mobile-refresh
+Content-Type: application/json
+
+Request:
+{
+  "refreshToken": "STORED_REFRESH_TOKEN"
+}
+
+Success response has the same shape as mobile login:
+data.accessToken
+data.refreshToken
+data.user
+
+If this returns 401, send the user back to the mobile login screen.
+
+
+4. Authenticated requests
+--------------------------
+
+Send the access token as a bearer token:
+
+Authorization: Bearer ACCESS_TOKEN
+
+All user data is scoped to the authenticated user. Never send the mobile
+secret key with normal library or song requests.
+
+
+5. Libraries
+------------
+
+GET /libraries
+Authorization: Bearer ACCESS_TOKEN
+
+Returns:
+{
+  "success": true,
+  "data": [
+    {
+      "_id": "LIBRARY_ID",
+      "name": "Late Night Songs",
+      "description": "Your personal listening space",
+      "songCount": 3,
+      "createdAt": "DATE",
+      "updatedAt": "DATE"
+    }
+  ]
+}
+
+GET /libraries/LIBRARY_ID/songs
+Authorization: Bearer ACCESS_TOKEN
+
+Returns an array of songs. A song with Cloudinary audio is ready to play
+when song.audio.status is "ready" and song.audio.url is present:
+
+{
+  "_id": "SONG_ID",
+  "library": "LIBRARY_ID",
+  "title": "Song title",
+  "youtubeUrl": "https://www.youtube.com/watch?v=VIDEO_ID",
+  "youtubeVideoId": "VIDEO_ID",
+  "thumbnail": "IMAGE_URL",
+  "channelName": "Channel name",
+  "playCount": 0,
+  "audio": {
+    "url": "https://res.cloudinary.com/...",
+    "publicId": "nightwrapup/mp3/...",
+    "status": "ready",
+    "quality": "mp3",
+    "size": "4.36 MB",
+    "duration": 201,
+    "provider": "cloudinary"
+  },
+  "createdAt": "DATE",
+  "updatedAt": "DATE"
+}
+
+Use song.audio.url as the native audio source. Older songs may not have
+audio.url; show them as unavailable or use a separate fallback if desired.
+
+
+6. Playback count
+-----------------
+
+POST /libraries/LIBRARY_ID/songs/SONG_ID/play
+Authorization: Bearer ACCESS_TOKEN
+
+Call this once when the user starts playing a song. The response returns
+the updated song object.
+
+
+7. Optional library management
+------------------------------
+
+POST /libraries
+Authorization: Bearer ACCESS_TOKEN
+Content-Type: application/json
+
+Request:
+{
+  "name": "Workout",
+  "description": "Songs for training"
+}
+
+DELETE /libraries/LIBRARY_ID
+Authorization: Bearer ACCESS_TOKEN
+
+This deletes the library, its songs, and associated Cloudinary audio assets.
+
+DELETE /libraries/LIBRARY_ID/songs/SONG_ID
+Authorization: Bearer ACCESS_TOKEN
+
+This deletes one song and its associated Cloudinary audio asset.
+
+
+8. Error handling
+-----------------
+
+Every error normally has this shape:
+{
+  "success": false,
+  "message": "Readable error message"
+}
+
+401:
+- Access token expired or invalid: call /auth/mobile-refresh once.
+- Mobile refresh returns 401: clear mobile tokens and require login again.
+
+Do not retry a failed mobile login indefinitely. The mobile key can be
+deleted or changed from the website.
+
+
+9. Security requirements
+------------------------
+
+- Store accessToken and refreshToken in the platform secure storage
+  (Android Keystore-backed storage, iOS Keychain, or the framework equivalent).
+- Never store tokens in plain preferences or a normal unencrypted file.
+- Never log the secret key, access token, refresh token, cookies, or full
+  Cloudinary signed URLs.
+- Send requests only over HTTPS in production.
+- Replace the refresh token whenever /auth/mobile-refresh succeeds.
+- If the user taps logout, clear both mobile tokens locally.
+
+
+10. Backend endpoint summary
+---------------------------
+
+POST   /auth/mobile-login
+POST   /auth/mobile-refresh
+GET    /libraries
+GET    /libraries/:libraryId/songs
+POST   /libraries/:libraryId/songs/:songId/play
+POST   /libraries
+DELETE /libraries/:libraryId
+DELETE /libraries/:libraryId/songs/:songId
+
+
+11. Recommended Expo project structure
+--------------------------------------
+
+Use Expo with TypeScript and keep screens, server communication, storage,
+and playback separate. This structure is intentionally modular so the app
+can grow without putting all logic in App.tsx:
+
+nightwrapup-mobile/
+  app/
+    _layout.tsx
+    index.tsx
+    login.tsx
+    (app)/
+      _layout.tsx
+      index.tsx
+      library/
+        [libraryId].tsx
+      profile.tsx
+      settings.tsx
+  src/
+    api/
+      client.ts
+      endpoints/
+        auth.ts
+        libraries.ts
+        songs.ts
+      types.ts
+    auth/
+      auth-context.tsx
+      auth-storage.ts
+      auth-service.ts
+      auth-types.ts
+    components/
+      AppButton.tsx
+      AppTextInput.tsx
+      EmptyState.tsx
+      LoadingState.tsx
+      ErrorState.tsx
+      LibraryCard.tsx
+      SongRow.tsx
+      MiniPlayer.tsx
+      FullPlayer.tsx
+    features/
+      libraries/
+        library-hooks.ts
+        library-types.ts
+      songs/
+        song-hooks.ts
+        song-types.ts
+      player/
+        player-context.tsx
+        player-queue.ts
+        player-types.ts
+    hooks/
+      useAppState.ts
+      useDebounce.ts
+    lib/
+      constants.ts
+      dates.ts
+      errors.ts
+      validation.ts
+    theme/
+      colors.ts
+      spacing.ts
+      typography.ts
+      theme.ts
+  assets/
+    icon.png
+    adaptive-icon.png
+    splash.png
+  app.json
+  eas.json
+  package.json
+  tsconfig.json
+
+
+12. Expo navigation responsibilities
+-------------------------------------
+
+The app router should have two navigation areas:
+
+Unauthenticated:
+  app/index.tsx
+  app/login.tsx
+
+Authenticated:
+  app/(app)/index.tsx
+  app/(app)/library/[libraryId].tsx
+  app/(app)/profile.tsx
+  app/(app)/settings.tsx
+
+The root layout reads AuthContext and redirects:
+
+- No stored session -> /login
+- Valid session -> /(app)
+- Refresh failure -> clear tokens and redirect to /login
+
+Screens should render UI and call feature hooks. They should not contain raw
+fetch calls, token parsing, or Cloudinary URL logic.
+
+
+13. API layer design
+--------------------
+
+src/api/client.ts should be the only low-level HTTP client. It should:
+
+- Use the production base URL from EXPO_PUBLIC_API_URL.
+- Add Authorization: Bearer ACCESS_TOKEN.
+- Parse the standard { success, data, message } response shape.
+- On the first 401, call mobile-refresh once.
+- Replace both stored tokens after a successful refresh.
+- Retry the original request once.
+- Clear the session after refresh returns 401.
+- Never retry login, refresh, or validation errors indefinitely.
+
+src/api/endpoints/auth.ts:
+
+- mobileLogin(email, secretKey)
+- mobileRefresh(refreshToken)
+
+src/api/endpoints/libraries.ts:
+
+- listLibraries()
+- createLibrary(name, description)
+- deleteLibrary(libraryId)
+- listLibrarySongs(libraryId)
+
+src/api/endpoints/songs.ts:
+
+- recordSongPlay(libraryId, songId)
+- deleteSong(libraryId, songId)
+
+Keep endpoint response types in src/api/types.ts or feature type files.
+Do not duplicate response interfaces in individual screens.
+
+
+14. Authentication storage
+--------------------------
+
+Use expo-secure-store for:
+
+- nightwrapup_access_token
+- nightwrapup_refresh_token
+- nightwrapup_user
+
+Never store tokens in AsyncStorage, normal preferences, logs, or source
+code. The mobile secret key is used only by the login request and should
+not be stored after login unless a deliberate remember-key feature is
+added later.
+
+Suggested AuthContext state:
+
+type AuthState = {
+  status: 'loading' | 'signedOut' | 'signedIn';
+  user: AuthUser | null;
+  accessToken: string | null;
+}
+
+AuthContext should expose:
+
+- signIn(email, secretKey)
+- signOut()
+- restoreSession()
+- refreshSession()
+
+
+15. Audio player design
+-----------------------
+
+Use expo-audio or the Expo-supported audio package selected by the mobile
+agent. Keep playback inside PlayerContext rather than inside a song screen.
+
+The player should support:
+
+- play(song)
+- pause()
+- resume()
+- seek(seconds)
+- setVolume(value)
+- skipNext()
+- skipPrevious()
+- setQueue(songs)
+- clearQueue()
+- currentSong
+- position
+- duration
+- isPlaying
+
+Use song.audio.url as the native audio source when:
+
+- song.audio.status === "ready"
+- song.audio.url is present
+
+When no audio URL exists, show that the song is not available for native
+mobile playback instead of attempting to download from the YouTube URL.
+
+Call POST /libraries/:libraryId/songs/:songId/play once when playback
+actually starts, not every time the player component re-renders.
+
+
+16. State ownership
+-------------------
+
+AuthContext owns:
+- User session
+- Access and refresh tokens
+- Login, refresh, and logout
+
+Library hooks own:
+- Library list
+- Selected library
+- Library loading and error states
+
+Song hooks own:
+- Songs for the selected library
+- Song deletion
+- Play-count updates
+
+PlayerContext owns:
+- Queue
+- Current song
+- Native audio state
+- Playback controls
+
+Screens should combine these contexts and hooks rather than duplicating
+state or making direct database assumptions.
+
+
+17. Environment and Expo configuration
+--------------------------------------
+
+Use environment variables instead of hardcoding URLs:
+
+EXPO_PUBLIC_API_URL=https://apinightwrapup.ziax.online/api
+
+For EAS builds, configure the value with EAS environment variables. Do not
+put API secrets, MongoDB credentials, Cloudinary credentials, or JWT
+secrets in the Expo app. The mobile app only needs the public API URL.
+
+Recommended app.json basics:
+
+{
+  "expo": {
+    "name": "NightWrapUp",
+    "slug": "nightwrapup-mobile",
+    "scheme": "nightwrapup",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "plugins": ["expo-router", "expo-secure-store"]
+  }
+}
+
+
+18. Suggested implementation order
+-----------------------------------
+
+1. Create the Expo TypeScript project with Expo Router.
+2. Add the environment API URL and typed API client.
+3. Implement SecureStore-based AuthContext.
+4. Implement mobile login and mobile refresh.
+5. Add the signed-in route group and login redirect.
+6. Add library listing.
+7. Add song listing and Cloudinary audio playback.
+8. Add queue controls and the mini-player.
+9. Add play-count tracking.
+10. Add delete actions with confirmation.
+11. Add offline-friendly loading, empty, and error states.
+12. Test refresh-token rotation, logout, revoked keys, and expired sessions.
+13. Build Android/iOS packages with EAS only after the development flow is
+    stable.
+
+
+19. Future expansion points
+---------------------------
+
+Keep these features behind separate modules so they can be added later:
+
+- Offline queue metadata
+- Downloaded audio cache
+- Background audio controls
+- Lock-screen controls
+- Push notifications
+- Multiple mobile devices
+- Device/session management
+- Key rotation history
+- Pagination for large libraries
+- Search and filtering
+- Playlist reordering
+
+Do not make the first version depend on Firebase. The current API,
+Cloudinary audio URLs, SecureStore, and Expo audio playback are sufficient
+for the initial listening app.

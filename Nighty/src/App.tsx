@@ -4,7 +4,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { LibraryScreen } from './components/LibraryScreen';
 import { clearSession, fetchLibraries, fetchSongsForLibrary, getStoredToken, markSongPlayed, mobileLogin } from './services/api';
 import { ApiLibrary, ApiSong, LibraryItem, SongItem } from './types/api';
-import { buildFallbackImage } from './utils/format';
+import { buildFallbackImage, buildYoutubeThumbnail, normalizeImageUrl } from './utils/format';
 
 const palette = ['#8b5cf6', '#38bdf8', '#f59e0b', '#34d399', '#f472b6'];
 
@@ -21,7 +21,12 @@ const mapSong = (song: ApiSong, index: number): SongItem => ({
   title: song.title,
   artist: song.channelName ?? 'NightWrapUp',
   duration: Number(song.audio?.duration ?? 180 + index * 12),
-  thumbnail: song.thumbnail ?? buildFallbackImage(index),
+  thumbnail:
+    normalizeImageUrl(song.thumbnail) ??
+    buildYoutubeThumbnail(song.youtubeVideoId, song.youtubeUrl) ??
+    buildFallbackImage(index),
+  fallbackThumbnail:
+    buildYoutubeThumbnail(song.youtubeVideoId, song.youtubeUrl) ?? buildFallbackImage(index),
   audioUrl: song.audio?.url,
   tag: song.audio?.status === 'ready' ? 'stream ready' : 'queued',
   mood: song.playCount && song.playCount > 0 ? 'popular' : 'new',
@@ -40,6 +45,7 @@ export default function App() {
   const [songsByLibrary, setSongsByLibrary] = useState<Record<string, SongItem[]>>({});
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
   const [activeSongId, setActiveSongId] = useState<string | null>(null);
+  const [audioSourceUrl, setAudioSourceUrl] = useState<string | null>(null);
   const audio = useAudioPlayer(null, { updateInterval: 500 });
   const audioStatus = useAudioPlayerStatus(audio);
 
@@ -53,20 +59,14 @@ export default function App() {
     [activeSongId, selectedSongs],
   );
 
-  const loadSongsForLibrary = async (libraryId: string) => {
-    try {
-      const songs = await fetchSongsForLibrary(libraryId);
-      const mapped = songs.map(mapSong);
-      setSongsByLibrary((current) => ({ ...current, [libraryId]: mapped }));
-      if (mapped.length > 0) {
-        setActiveSongId(mapped[0]._id);
-      }
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load tracks.');
-    }
+  const loadSongsForLibrary = async (libraryId: string): Promise<SongItem[]> => {
+    const songs = await fetchSongsForLibrary(libraryId);
+    const mapped = songs.map(mapSong);
+    setSongsByLibrary((current) => ({ ...current, [libraryId]: mapped }));
+    return mapped;
   };
 
-  const loadLibraries = async () => {
+  const loadLibraries = async (preferredLibraryId?: string | null) => {
     try {
       setIsLoading(true);
       setError('');
@@ -75,8 +75,11 @@ export default function App() {
       setLibraries(mappedLibraries);
 
       if (mappedLibraries.length > 0) {
-        setSelectedLibraryId(mappedLibraries[0]._id);
-        await loadSongsForLibrary(mappedLibraries[0]._id);
+        const libraryToSelect =
+          mappedLibraries.find((library) => library._id === preferredLibraryId) ?? mappedLibraries[0];
+        setSelectedLibraryId(libraryToSelect._id);
+        const songs = await loadSongsForLibrary(libraryToSelect._id);
+        setActiveSongId(songs[0]?._id ?? null);
       }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Could not load your libraries.');
@@ -142,21 +145,22 @@ export default function App() {
   }, [audioStatus.playing, audioStatus.didJustFinish]);
 
   const handleLibraryChange = async (libraryId: string) => {
-    setSelectedLibraryId(libraryId);
-    let songs = songsByLibrary[libraryId];
-    if (!songsByLibrary[libraryId]) {
-      try {
-        const apiSongs = await fetchSongsForLibrary(libraryId);
-        songs = apiSongs.map(mapSong);
-        setSongsByLibrary((current) => ({ ...current, [libraryId]: songs ?? [] }));
-      } catch (loadError) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load tracks.');
-        return;
-      }
+    if (libraryId === selectedLibraryId) {
+      return;
     }
-    const nextSong = songs?.[0];
-    if (nextSong) {
-      setActiveSongId(nextSong._id);
+
+    audio.pause();
+    setAudioSourceUrl(null);
+    setSelectedLibraryId(libraryId);
+    setActiveSongId(null);
+    setIsPlaying(false);
+    setError('');
+
+    try {
+      const songs = await loadSongsForLibrary(libraryId);
+      setActiveSongId(songs[0]?._id ?? null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Failed to load tracks.');
     }
   };
 
@@ -170,6 +174,7 @@ export default function App() {
     try {
       setError('');
       audio.replace(track.audioUrl);
+      setAudioSourceUrl(track.audioUrl);
       audio.play();
       setIsPlaying(true);
     } catch (playbackError) {
@@ -214,6 +219,7 @@ export default function App() {
 
   const handleLogout = async () => {
     audio.pause();
+    setAudioSourceUrl(null);
     await clearSession();
     setLibraries([]);
     setSongsByLibrary({});
@@ -221,6 +227,12 @@ export default function App() {
     setActiveSongId(null);
     setIsAuthenticated(false);
     setError('');
+  };
+
+  const handleRefresh = async () => {
+    console.warn('[NightWrapUp] Pull-to-refresh started');
+    await loadLibraries(selectedLibraryId);
+    console.warn('[NightWrapUp] Pull-to-refresh finished');
   };
 
   const handleTogglePlay = async () => {
@@ -232,7 +244,7 @@ export default function App() {
     }
 
     try {
-      if (!audioStatus.isLoaded) {
+      if (audioSourceUrl !== activeTrack.audioUrl || !audioStatus.isLoaded) {
         await playTrack(activeTrack);
         return;
       }
@@ -275,6 +287,7 @@ export default function App() {
       onNext={() => void handleTrackChange(1)}
       onLogout={() => void handleLogout()}
       onTogglePlay={() => void handleTogglePlay()}
+      onRefresh={() => void handleRefresh()}
       isPlaying={isPlaying}
     />
   );
