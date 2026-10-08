@@ -16,6 +16,14 @@ const readJson = async <T>(response: Response): Promise<T | null> => {
   }
 };
 
+const logApiPayload = (label: string, value: unknown) => {
+  try {
+    console.log(`[NightWrapUp API] ${label}:`, JSON.stringify(value, null, 2));
+  } catch {
+    console.log(`[NightWrapUp API] ${label}:`, value);
+  }
+};
+
 export const saveSession = async (accessToken: string, refreshToken: string) => {
   await SecureStore.setItemAsync(STORAGE_KEYS.accessToken, accessToken);
   await SecureStore.setItemAsync(STORAGE_KEYS.refreshToken, refreshToken);
@@ -78,6 +86,7 @@ export const requestWithAuth = async <T>(path: string, options: RequestInit = {}
   };
 
   let token = await getStoredToken();
+  console.log(`[NightWrapUp API] ${options.method ?? 'GET'} ${path}`);
   let response = await execute(token);
 
   if (response.status === 401) {
@@ -90,6 +99,8 @@ export const requestWithAuth = async <T>(path: string, options: RequestInit = {}
   }
 
   const payload = await readJson<T | ApiEnvelope<T> | T[]>(response);
+  console.log(`[NightWrapUp API] RESPONSE ${response.status} ${path}`);
+  logApiPayload(`DATA ${path}`, payload);
 
   if (!response.ok) {
     const message =

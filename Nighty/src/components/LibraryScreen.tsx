@@ -2,6 +2,7 @@ import React from 'react';
 import {
   Image,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +12,35 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LibraryItem, SongItem } from '../types/api';
 import { formatTime } from '../utils/format';
+
+function SongArtwork({
+  uri,
+  fallbackUri,
+  style,
+}: {
+  uri: string;
+  fallbackUri: string;
+  style: object;
+}) {
+  const [imageUri, setImageUri] = React.useState(uri);
+
+  React.useEffect(() => {
+    setImageUri(uri);
+  }, [uri]);
+
+  return (
+    <Image
+      source={{ uri: imageUri }}
+      style={style}
+      resizeMode="cover"
+      onError={() => {
+        if (imageUri !== fallbackUri) {
+          setImageUri(fallbackUri);
+        }
+      }}
+    />
+  );
+}
 
 type LibraryScreenProps = {
   libraries: LibraryItem[];
@@ -25,6 +55,7 @@ type LibraryScreenProps = {
   onNext: () => void;
   onLogout: () => void;
   onTogglePlay: () => void;
+  onRefresh: () => void;
   isPlaying: boolean;
 };
 
@@ -41,6 +72,7 @@ export function LibraryScreen({
   onNext,
   onLogout,
   onTogglePlay,
+  onRefresh,
   isPlaying,
 }: LibraryScreenProps) {
   const selectedLibrary = libraries.find((library) => library._id === selectedLibraryId) ?? null;
@@ -48,7 +80,20 @@ export function LibraryScreen({
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={onRefresh}
+            tintColor="#a78bfa"
+            colors={['#8b5cf6']}
+            progressBackgroundColor="#111a2d"
+          />
+        }
+      >
         <View style={styles.topBar}>
           <View>
             <Text style={styles.eyebrow}>Good evening</Text>
@@ -66,7 +111,11 @@ export function LibraryScreen({
             <View style={styles.heroCardGlow} />
             <View style={styles.heroCardGlowSecondary} />
             <View style={styles.heroRow}>
-              <Image source={{ uri: activeTrack.thumbnail }} style={styles.heroCover} />
+              <SongArtwork
+                uri={activeTrack.thumbnail}
+                fallbackUri={activeTrack.fallbackThumbnail}
+                style={styles.heroCover}
+              />
               <View style={styles.heroTextWrap}>
                 <Text style={styles.heroLabel}>Listening now</Text>
                 <Text style={styles.heroTitle} numberOfLines={2} ellipsizeMode="tail">
@@ -83,24 +132,9 @@ export function LibraryScreen({
           </View>
         ) : null}
 
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{libraries.length}</Text>
-            <Text style={styles.statLabel}>libraries</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{selectedSongs.length}</Text>
-            <Text style={styles.statLabel}>tracks</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statValue}>{isLoading ? '…' : 'Live'}</Text>
-            <Text style={styles.statLabel}>status</Text>
-          </View>
-        </View>
-
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Your spaces</Text>
-          <Text style={styles.sectionLink}>{isLoading ? 'Loading…' : 'Live data'}</Text>
+          <Text style={styles.sectionTitle}>Your library</Text>
+          <Text style={styles.sectionLink}>{isLoading ? 'Loading…' : `${selectedSongs.length} songs`}</Text>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.libraryStrip}>
@@ -122,11 +156,8 @@ export function LibraryScreen({
 
         {selectedLibrary ? (
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle} numberOfLines={1} ellipsizeMode="tail">
+            <Text style={styles.libraryTitle} numberOfLines={1} ellipsizeMode="tail">
               {selectedLibrary.name}
-            </Text>
-            <Text style={styles.sectionLink} numberOfLines={1} ellipsizeMode="tail">
-              {selectedLibrary.description}
             </Text>
           </View>
         ) : null}
@@ -146,7 +177,11 @@ export function LibraryScreen({
                   style={[styles.songCard, isCurrent && styles.songCardActive]}
                   onPress={() => onSongPress(song._id)}
                 >
-                  <Image source={{ uri: song.thumbnail }} style={styles.songCover} />
+                  <SongArtwork
+                    uri={song.thumbnail}
+                    fallbackUri={song.fallbackThumbnail}
+                    style={styles.songCover}
+                  />
                   <View style={styles.songMeta}>
                     <Text style={styles.songTitle} numberOfLines={1} ellipsizeMode="tail">
                       {song.title}
@@ -155,15 +190,12 @@ export function LibraryScreen({
                       {song.artist}
                     </Text>
                     <View style={styles.songTags}>
-                      <Text style={styles.songTag}>{song.tag}</Text>
-                      <Text style={[styles.songTag, styles.songTagSecondary]}>{song.mood}</Text>
+                      <Text style={styles.songTag}>{song.audioReady ? 'Available' : 'Not ready'}</Text>
                     </View>
                   </View>
                   <View style={styles.songInfo}>
                     <Text style={styles.songDuration}>{formatTime(song.duration)}</Text>
-                    <View style={styles.audioState}>
-                      <Text style={styles.audioStateText}>{song.audioReady ? 'Ready' : 'Queued'}</Text>
-                    </View>
+                    <Text style={styles.rowPlayIcon}>{isCurrent && isPlaying ? 'Ⅱ' : '▶'}</Text>
                   </View>
                 </Pressable>
               );
@@ -175,7 +207,11 @@ export function LibraryScreen({
       {activeTrack ? (
         <View style={styles.playerDock}>
           <View style={styles.playerTopRow}>
-            <Image source={{ uri: activeTrack.thumbnail }} style={styles.playerCover} />
+            <SongArtwork
+              uri={activeTrack.thumbnail}
+              fallbackUri={activeTrack.fallbackThumbnail}
+              style={styles.playerCover}
+            />
             <View style={styles.playerMeta}>
               <Text style={styles.playerTitle} numberOfLines={1} ellipsizeMode="tail">
                 {activeTrack.title}
@@ -337,45 +373,24 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 14,
   },
-  statsRow: {
-    flexDirection: 'row',
-    marginTop: 20,
-    justifyContent: 'space-between',
-  },
-  statCard: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.15)',
-    borderRadius: 18,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    marginHorizontal: 4,
-    alignItems: 'center',
-  },
-  statValue: {
-    color: '#f5f9ff',
-    fontSize: 22,
-    fontWeight: '800',
-  },
-  statLabel: {
-    color: '#929fbc',
-    fontSize: 12,
-    marginTop: 4,
-    fontWeight: '600',
-  },
   sectionHeader: {
     minWidth: 0,
     flexDirection: 'row',
     alignItems: 'baseline',
     justifyContent: 'space-between',
-    marginTop: 28,
-    marginBottom: 12,
+    marginTop: 24,
+    marginBottom: 10,
   },
   sectionTitle: {
     flexShrink: 1,
     color: '#edf4ff',
     fontSize: 18,
+    fontWeight: '800',
+  },
+  libraryTitle: {
+    flex: 1,
+    color: '#edf4ff',
+    fontSize: 22,
     fontWeight: '800',
   },
   sectionLink: {
@@ -390,10 +405,10 @@ const styles = StyleSheet.create({
     paddingRight: 16,
   },
   libraryChip: {
-    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    backgroundColor: '#111a2d',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     marginRight: 10,
     borderWidth: 1,
     borderColor: 'rgba(148, 163, 184, 0.18)',
@@ -407,26 +422,25 @@ const styles = StyleSheet.create({
     color: '#ffffff',
   },
   songList: {
-    marginTop: 6,
+    marginTop: 2,
   },
   songCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.78)',
-    borderRadius: 20,
-    padding: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.12)',
+    backgroundColor: 'transparent',
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    marginBottom: 3,
+    minHeight: 72,
   },
   songCardActive: {
-    borderColor: 'rgba(139, 92, 246, 0.7)',
-    backgroundColor: 'rgba(32, 23, 55, 0.9)',
+    backgroundColor: 'rgba(139, 92, 246, 0.15)',
   },
   songCover: {
-    width: 60,
-    height: 60,
-    borderRadius: 16,
+    width: 56,
+    height: 56,
+    borderRadius: 10,
   },
   songMeta: {
     flex: 1,
@@ -444,22 +458,12 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   songTags: {
-    flexDirection: 'row',
-    marginTop: 8,
+    marginTop: 5,
   },
   songTag: {
-    backgroundColor: 'rgba(148, 163, 184, 0.12)',
-    color: '#dfe8ff',
-    borderRadius: 999,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    fontSize: 10,
-    fontWeight: '700',
-    marginRight: 8,
-  },
-  songTagSecondary: {
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
-    color: '#bfe8ff',
+    color: '#8190ad',
+    fontSize: 11,
+    fontWeight: '600',
   },
   songInfo: {
     width: 58,
@@ -471,31 +475,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12,
   },
-  audioState: {
-    marginTop: 8,
-    backgroundColor: 'rgba(52, 211, 153, 0.14)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-  },
-  audioStateText: {
-    color: '#8ef5c7',
-    fontSize: 10,
+  rowPlayIcon: {
+    color: '#a78bfa',
+    fontSize: 15,
     fontWeight: '800',
-    textTransform: 'uppercase',
+    marginTop: 8,
   },
   playerDock: {
     marginHorizontal: 12,
     marginTop: 8,
     marginBottom: 12,
-    backgroundColor: '#101828',
+    backgroundColor: '#111a2d',
     borderColor: 'rgba(148, 163, 184, 0.15)',
     borderWidth: 1,
-    borderRadius: 20,
-    padding: 12,
+    borderRadius: 16,
+    padding: 10,
     shadowColor: '#000',
     shadowOpacity: 0.35,
-    shadowRadius: 18,
+    shadowRadius: 12,
     shadowOffset: { width: 0, height: 12 },
     elevation: 8,
   },
@@ -505,9 +502,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   playerCover: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
+    width: 48,
+    height: 48,
+    borderRadius: 10,
   },
   playerMeta: {
     flex: 1,
@@ -531,17 +528,17 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   transportButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
     backgroundColor: 'rgba(148, 163, 184, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   transportButtonPrimary: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
+    width: 38,
+    height: 38,
+    borderRadius: 12,
     backgroundColor: '#8b5cf6',
     alignItems: 'center',
     justifyContent: 'center',
