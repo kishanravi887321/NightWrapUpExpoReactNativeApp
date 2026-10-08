@@ -1,0 +1,281 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { LoginScreen } from './components/LoginScreen';
+import { LibraryScreen } from './components/LibraryScreen';
+import { clearSession, fetchLibraries, fetchSongsForLibrary, getStoredToken, markSongPlayed, mobileLogin } from './services/api';
+import { ApiLibrary, ApiSong, LibraryItem, SongItem } from './types/api';
+import { buildFallbackImage } from './utils/format';
+
+const palette = ['#8b5cf6', '#38bdf8', '#f59e0b', '#34d399', '#f472b6'];
+
+const mapLibrary = (library: ApiLibrary, index: number): LibraryItem => ({
+  _id: library._id,
+  name: library.name,
+  description: library.description ?? 'Your personal listening space',
+  accent: palette[index % palette.length],
+  songCount: library.songCount,
+});
+
+const mapSong = (song: ApiSong, index: number): SongItem => ({
+  _id: song._id,
+  title: song.title,
+  artist: song.channelName ?? 'NightWrapUp',
+  duration: Number(song.audio?.duration ?? 180 + index * 12),
+  thumbnail: song.thumbnail ?? buildFallbackImage(index),
+  audioUrl: song.audio?.url,
+  tag: song.audio?.status === 'ready' ? 'stream ready' : 'queued',
+  mood: song.playCount && song.playCount > 0 ? 'popular' : 'new',
+  audioReady: Boolean(song.audio?.url && song.audio?.status === 'ready'),
+  playCount: song.playCount ?? 0,
+});
+
+export default function App() {
+  const [email, setEmail] = useState('');
+  const [secretKey, setSecretKey] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [libraries, setLibraries] = useState<LibraryItem[]>([]);
+  const [songsByLibrary, setSongsByLibrary] = useState<Record<string, SongItem[]>>({});
+  const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
+  const [activeSongId, setActiveSongId] = useState<string | null>(null);
+  const audio = useAudioPlayer(null, { updateInterval: 500 });
+  const audioStatus = useAudioPlayerStatus(audio);
+
+  const selectedLibrary = libraries.find((library) => library._id === selectedLibraryId) ?? null;
+  const selectedSongs = useMemo(
+    () => (selectedLibraryId ? songsByLibrary[selectedLibraryId] ?? [] : []),
+    [selectedLibraryId, songsByLibrary],
+  );
+  const activeTrack = useMemo(
+    () => selectedSongs.find((song) => song._id === activeSongId) ?? selectedSongs[0] ?? null,
+    [activeSongId, selectedSongs],
+  );
+
+  const loadSongsForLibrary = async (libraryId: string) => {
+    try {
+      const songs = await fetchSongsForLibrary(libraryId);
+      const mapped = songs.map(mapSong);
+      setSongsByLibrary((current) => ({ ...current, [libraryId]: mapped }));
+      if (mapped.length > 0) {
+        setActiveSongId(mapped[0]._id);
+      }
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Failed to load tracks.');
+    }
+  };
+
+  const loadLibraries = async () => {
+    try {
+      setIsLoading(true);
+      setError('');
+      const apiLibraries = await fetchLibraries();
+      const mappedLibraries = apiLibraries.map(mapLibrary);
+      setLibraries(mappedLibraries);
+
+      if (mappedLibraries.length > 0) {
+        setSelectedLibraryId(mappedLibraries[0]._id);
+        await loadSongsForLibrary(mappedLibraries[0]._id);
+      }
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Could not load your libraries.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    const cleanedKey = secretKey.replace(/\D/g, '');
+    if (!email.trim() || cleanedKey.length !== 8) {
+      setError('Enter a valid email and your exact 8-digit mobile key.');
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      setError('');
+      const session = await mobileLogin(email, cleanedKey);
+      if (!session?.accessToken) {
+        throw new Error('Mobile login failed.');
+      }
+      setIsAuthenticated(true);
+      await loadLibraries();
+    } catch (loginError) {
+      setError(loginError instanceof Error ? loginError.message : 'Mobile login failed.');
+      setIsAuthenticated(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const restoreSession = async () => {
+    try {
+      const token = await getStoredToken();
+      if (!token) {
+        setIsAuthenticated(false);
+        return;
+      }
+      setIsAuthenticated(true);
+      await loadLibraries();
+    } catch {
+      setIsAuthenticated(false);
+    }
+  };
+
+  useEffect(() => {
+    void restoreSession();
+    void setAudioModeAsync({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'duckOthers',
+    }).catch((audioError) => {
+      setError(audioError instanceof Error ? `Audio setup failed: ${audioError.message}` : 'Audio setup failed.');
+    });
+  }, []);
+
+  useEffect(() => {
+    setIsPlaying(audioStatus.playing);
+    if (audioStatus.didJustFinish) {
+      setIsPlaying(false);
+    }
+  }, [audioStatus.playing, audioStatus.didJustFinish]);
+
+  const handleLibraryChange = async (libraryId: string) => {
+    setSelectedLibraryId(libraryId);
+    let songs = songsByLibrary[libraryId];
+    if (!songsByLibrary[libraryId]) {
+      try {
+        const apiSongs = await fetchSongsForLibrary(libraryId);
+        songs = apiSongs.map(mapSong);
+        setSongsByLibrary((current) => ({ ...current, [libraryId]: songs ?? [] }));
+      } catch (loadError) {
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load tracks.');
+        return;
+      }
+    }
+    const nextSong = songs?.[0];
+    if (nextSong) {
+      setActiveSongId(nextSong._id);
+    }
+  };
+
+  const playTrack = async (track: SongItem) => {
+    if (!track.audioUrl) {
+      setIsPlaying(false);
+      setError('This song is not ready for playback yet.');
+      return;
+    }
+
+    try {
+      setError('');
+      audio.replace(track.audioUrl);
+      audio.play();
+      setIsPlaying(true);
+    } catch (playbackError) {
+      setIsPlaying(false);
+      setError(playbackError instanceof Error ? `Playback failed: ${playbackError.message}` : 'Playback failed.');
+    }
+  };
+
+  const handleSongPress = async (songId: string) => {
+    if (!selectedLibraryId) {
+      return;
+    }
+
+    setActiveSongId(songId);
+    const selectedSong = selectedSongs.find((song) => song._id === songId);
+    if (selectedSong) {
+      await playTrack(selectedSong);
+    }
+
+    try {
+      await markSongPlayed(selectedLibraryId, songId);
+      setSongsByLibrary((current) => ({
+        ...current,
+        [selectedLibraryId]: (current[selectedLibraryId] ?? []).map((song) =>
+          song._id === songId ? { ...song, playCount: (song.playCount ?? 0) + 1 } : song,
+        ),
+      }));
+    } catch (playError) {
+      setError(playError instanceof Error ? playError.message : 'Play count update failed.');
+    }
+  };
+
+  const handleTrackChange = async (direction: 1 | -1) => {
+    if (!activeTrack || selectedSongs.length < 2) {
+      return;
+    }
+
+    const currentIndex = selectedSongs.findIndex((song) => song._id === activeTrack._id);
+    const nextIndex = (currentIndex + direction + selectedSongs.length) % selectedSongs.length;
+    await handleSongPress(selectedSongs[nextIndex]._id);
+  };
+
+  const handleLogout = async () => {
+    audio.pause();
+    await clearSession();
+    setLibraries([]);
+    setSongsByLibrary({});
+    setSelectedLibraryId(null);
+    setActiveSongId(null);
+    setIsAuthenticated(false);
+    setError('');
+  };
+
+  const handleTogglePlay = async () => {
+    if (!activeTrack?.audioUrl) {
+      if (activeTrack) {
+        await playTrack(activeTrack);
+      }
+      return;
+    }
+
+    try {
+      if (!audioStatus.isLoaded) {
+        await playTrack(activeTrack);
+        return;
+      }
+      if (audioStatus.playing) {
+        audio.pause();
+      } else {
+        audio.play();
+      }
+    } catch (playbackError) {
+      setError(playbackError instanceof Error ? `Playback failed: ${playbackError.message}` : 'Playback failed.');
+      setIsPlaying(false);
+    }
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <LoginScreen
+        email={email}
+        secretKey={secretKey}
+        error={error}
+        isLoading={isLoading}
+        onEmailChange={setEmail}
+        onSecretKeyChange={setSecretKey}
+        onLogin={() => void handleLogin()}
+      />
+    );
+  }
+
+  return (
+    <LibraryScreen
+      libraries={libraries}
+      selectedLibraryId={selectedLibraryId}
+      selectedSongs={selectedSongs}
+      activeTrack={activeTrack}
+      isLoading={isLoading}
+      error={error}
+      onLibraryChange={(id) => void handleLibraryChange(id)}
+      onSongPress={(id) => void handleSongPress(id)}
+      onPrevious={() => void handleTrackChange(-1)}
+      onNext={() => void handleTrackChange(1)}
+      onLogout={() => void handleLogout()}
+      onTogglePlay={() => void handleTogglePlay()}
+      isPlaying={isPlaying}
+    />
+  );
+}
