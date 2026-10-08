@@ -3,6 +3,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -37,12 +38,18 @@ export function LoginScreen({
         style={styles.loginShell}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.loginGlow} />
-        <View style={styles.loginCard}>
-          <Text style={styles.eyebrow}>NightWrapUp mobile</Text>
-          <Text style={styles.title}>Night mode listening</Text>
+        <ScrollView
+          contentContainerStyle={styles.loginScrollContent}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.brandMark}>
+            <Text style={styles.brandMarkText}>N</Text>
+          </View>
+          <Text style={styles.eyebrow}>NIGHTWRAPUP</Text>
+          <Text style={styles.title}>Your night,{"\n"}your sound.</Text>
           <Text style={styles.subtitle}>
-            Sign in with your website email and the 8-digit mobile key you saved in your profile.
+            Sign in to continue listening to your private library.
           </Text>
 
           <View style={styles.inputGroup}>
@@ -81,10 +88,10 @@ export function LoginScreen({
           </Pressable>
 
           <View style={styles.helpRow}>
-            <Text style={styles.helpText}>Website flow</Text>
-            <Text style={styles.helpText}>Profile → Mobile listening</Text>
+            <View style={styles.helpDot} />
+            <Text style={styles.helpText}>Use the mobile key from your profile</Text>
           </View>
-        </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -97,9 +104,16 @@ const styles = StyleSheet.create({
   },
   loginShell: {
     flex: 1,
-    justifyContent: 'center',
     backgroundColor: '#050816',
+  },
+  loginScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    width: '100%',
+    maxWidth: 390,
+    alignSelf: 'center',
     paddingHorizontal: 24,
+    paddingVertical: 36,
   },
   loginGlow: {
     position: 'absolute',
@@ -123,6 +137,25 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 12 },
     elevation: 8,
   },
+  brandMark: {
+    width: 58,
+    height: 58,
+    borderRadius: 19,
+    backgroundColor: '#8b5cf6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+    shadowColor: '#8b5cf6',
+    shadowOpacity: 0.4,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8,
+  },
+  brandMarkText: {
+    color: '#ffffff',
+    fontSize: 30,
+    fontWeight: '900',
+  },
   eyebrow: {
     color: '#9cc6ff',
     fontSize: 12,
@@ -131,20 +164,20 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   title: {
-    fontSize: 32,
-    lineHeight: 38,
+    fontSize: 36,
+    lineHeight: 40,
     color: '#f8fbff',
     fontWeight: '800',
-    marginTop: 12,
+    marginTop: 10,
   },
   subtitle: {
-    marginTop: 12,
-    fontSize: 15,
-    lineHeight: 22,
+    marginTop: 14,
+    fontSize: 14,
+    lineHeight: 21,
     color: '#b4bdd3',
   },
   inputGroup: {
-    marginTop: 20,
+    marginTop: 18,
   },
   label: {
     color: '#dfe7ff',
@@ -157,7 +190,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(15, 23, 42, 0.9)',
     borderColor: 'rgba(96, 112, 160, 0.5)',
     borderWidth: 1,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 14,
     color: '#f5f7ff',
@@ -170,10 +203,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   primaryButton: {
-    marginTop: 24,
+    marginTop: 22,
     backgroundColor: '#8b5cf6',
     paddingVertical: 16,
-    borderRadius: 14,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#8b5cf6',
@@ -188,10 +221,16 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   helpRow: {
-    marginTop: 18,
+    marginTop: 20,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  helpDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+    backgroundColor: '#34d399',
+    marginRight: 8,
   },
   helpText: {
     color: '#7f8fb4',

@@ -66,6 +66,7 @@ export function LibraryScreen({
             <View style={styles.heroCardGlow} />
             <View style={styles.heroCardGlowSecondary} />
             <View style={styles.heroRow}>
+              <Image source={{ uri: activeTrack.thumbnail }} style={styles.heroCover} />
               <View style={styles.heroTextWrap}>
                 <Text style={styles.heroLabel}>Listening now</Text>
                 <Text style={styles.heroTitle} numberOfLines={2} ellipsizeMode="tail">
@@ -289,8 +290,16 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  heroCover: {
+    width: 86,
+    height: 110,
+    borderRadius: 18,
+    marginRight: 14,
+    backgroundColor: '#253553',
+  },
   heroTextWrap: {
     flex: 1,
+    minWidth: 0,
     marginRight: 12,
   },
   heroLabel: {
