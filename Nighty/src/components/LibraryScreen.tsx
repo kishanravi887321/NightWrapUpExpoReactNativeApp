@@ -48,7 +48,7 @@ export function LibraryScreen({
   return (
     <SafeAreaView style={styles.safeArea}>
       <StatusBar style="light" />
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.scroll} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.topBar}>
           <View>
             <Text style={styles.eyebrow}>Good evening</Text>
@@ -68,8 +68,12 @@ export function LibraryScreen({
             <View style={styles.heroRow}>
               <View style={styles.heroTextWrap}>
                 <Text style={styles.heroLabel}>Listening now</Text>
-                <Text style={styles.heroTitle}>{activeTrack.title}</Text>
-                <Text style={styles.heroArtist}>{activeTrack.artist}</Text>
+                <Text style={styles.heroTitle} numberOfLines={2} ellipsizeMode="tail">
+                  {activeTrack.title}
+                </Text>
+                <Text style={styles.heroArtist} numberOfLines={1} ellipsizeMode="tail">
+                  {activeTrack.artist}
+                </Text>
               </View>
               <Pressable style={styles.playButton} onPress={onTogglePlay}>
                 <Text style={styles.playButtonText}>{isPlaying ? 'Pause' : 'Play'}</Text>
@@ -117,8 +121,12 @@ export function LibraryScreen({
 
         {selectedLibrary ? (
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>{selectedLibrary.name}</Text>
-            <Text style={styles.sectionLink}>{selectedLibrary.description}</Text>
+            <Text style={styles.sectionTitle} numberOfLines={1} ellipsizeMode="tail">
+              {selectedLibrary.name}
+            </Text>
+            <Text style={styles.sectionLink} numberOfLines={1} ellipsizeMode="tail">
+              {selectedLibrary.description}
+            </Text>
           </View>
         ) : null}
 
@@ -139,8 +147,12 @@ export function LibraryScreen({
                 >
                   <Image source={{ uri: song.thumbnail }} style={styles.songCover} />
                   <View style={styles.songMeta}>
-                    <Text style={styles.songTitle}>{song.title}</Text>
-                    <Text style={styles.songArtist}>{song.artist}</Text>
+                    <Text style={styles.songTitle} numberOfLines={1} ellipsizeMode="tail">
+                      {song.title}
+                    </Text>
+                    <Text style={styles.songArtist} numberOfLines={1} ellipsizeMode="tail">
+                      {song.artist}
+                    </Text>
                     <View style={styles.songTags}>
                       <Text style={styles.songTag}>{song.tag}</Text>
                       <Text style={[styles.songTag, styles.songTagSecondary]}>{song.mood}</Text>
@@ -161,10 +173,16 @@ export function LibraryScreen({
 
       {activeTrack ? (
         <View style={styles.playerDock}>
-          <Image source={{ uri: activeTrack.thumbnail }} style={styles.playerCover} />
-          <View style={styles.playerMeta}>
-            <Text style={styles.playerTitle}>{activeTrack.title}</Text>
-            <Text style={styles.playerArtist}>{activeTrack.artist}</Text>
+          <View style={styles.playerTopRow}>
+            <Image source={{ uri: activeTrack.thumbnail }} style={styles.playerCover} />
+            <View style={styles.playerMeta}>
+              <Text style={styles.playerTitle} numberOfLines={1} ellipsizeMode="tail">
+                {activeTrack.title}
+              </Text>
+              <Text style={styles.playerArtist} numberOfLines={1} ellipsizeMode="tail">
+                {activeTrack.artist}
+              </Text>
+            </View>
           </View>
 
           <View style={styles.playerControls}>
@@ -189,10 +207,13 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#050816',
   },
+  scroll: {
+    flex: 1,
+  },
   content: {
     paddingHorizontal: 20,
     paddingTop: 12,
-    paddingBottom: 120,
+    paddingBottom: 24,
   },
   topBar: {
     flexDirection: 'row',
@@ -280,7 +301,8 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: '#f8fbff',
-    fontSize: 28,
+    fontSize: 24,
+    lineHeight: 30,
     fontWeight: '800',
     marginTop: 8,
   },
@@ -333,21 +355,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   sectionHeader: {
+    minWidth: 0,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
     marginTop: 28,
     marginBottom: 12,
   },
   sectionTitle: {
+    flexShrink: 1,
     color: '#edf4ff',
     fontSize: 18,
     fontWeight: '800',
   },
   sectionLink: {
+    flexShrink: 1,
+    maxWidth: '56%',
     color: '#9fb6df',
     fontSize: 12,
     fontWeight: '700',
+    textAlign: 'right',
   },
   libraryStrip: {
     paddingRight: 16,
@@ -387,17 +414,18 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(32, 23, 55, 0.9)',
   },
   songCover: {
-    width: 68,
-    height: 68,
-    borderRadius: 18,
+    width: 60,
+    height: 60,
+    borderRadius: 16,
   },
   songMeta: {
     flex: 1,
+    minWidth: 0,
     marginLeft: 12,
   },
   songTitle: {
     color: '#f5f9ff',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '800',
   },
   songArtist: {
@@ -424,6 +452,7 @@ const styles = StyleSheet.create({
     color: '#bfe8ff',
   },
   songInfo: {
+    width: 58,
     alignItems: 'flex-end',
     marginLeft: 10,
   },
@@ -446,22 +475,24 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   playerDock: {
-    position: 'absolute',
-    left: 16,
-    right: 16,
-    bottom: 18,
-    backgroundColor: 'rgba(16, 24, 40, 0.95)',
+    marginHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 12,
+    backgroundColor: '#101828',
     borderColor: 'rgba(148, 163, 184, 0.15)',
     borderWidth: 1,
-    borderRadius: 22,
+    borderRadius: 20,
     padding: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 12 },
     elevation: 8,
+  },
+  playerTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minWidth: 0,
   },
   playerCover: {
     width: 52,
@@ -470,6 +501,7 @@ const styles = StyleSheet.create({
   },
   playerMeta: {
     flex: 1,
+    minWidth: 0,
     marginLeft: 12,
   },
   playerTitle: {
@@ -485,6 +517,8 @@ const styles = StyleSheet.create({
   playerControls: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
   },
   transportButton: {
     width: 34,
