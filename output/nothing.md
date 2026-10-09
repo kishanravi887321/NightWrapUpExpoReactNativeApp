@@ -70,6 +70,52 @@ Version 02 must be installed as the rebuilt APK for native background playback t
 
 After starting a song, the app should continue playing when the screen is locked or the app is placed in the background. Android battery optimization, loss of network connectivity, force-stopping the app, or an unavailable audio URL can still stop playback.
 
+## Latest update - Version 03
+
+Version 03 contains the mobile YouTube sharing flow and player display fixes.
+
+Changes:
+
+- Added Android share-intent support with `expo-share-intent`.
+- Users can share a YouTube video from the YouTube app directly to NightWrapUp.
+- NightWrapUp opens and displays a library-selection modal.
+- Users select a library without manually copying or pasting the YouTube URL.
+- The app saves the shared song through the mobile access-token route:
+
+  ```text
+  PUT /api/libraries/:libraryId/songs
+  ```
+
+- The backend prepares the audio, uploads it to Cloudinary, and stores the song in the selected library.
+- Added a `Save to library` modal with library names, track counts, and a cancel action.
+- Shared YouTube URLs are retained while the user signs in.
+- Invalid shared links display a clear YouTube-link error.
+- Updated the player time display to show only whole minutes and seconds:
+
+  ```text
+  8:34
+  -1:38
+  ```
+
+- Removed decimal millisecond values from the progress display.
+
+## Version 03 build requirement
+
+Version 03 uses native Android share-intent functionality and cannot be tested through Expo Go. A new APK must be built and installed:
+
+```powershell
+cd Nighty
+npx eas build --profile preview --platform android
+```
+
+After installing the new APK:
+
+1. Open YouTube.
+2. Open a video and tap `Share`.
+3. Select `NightWrapUp`.
+4. Choose a library in the modal.
+5. Wait for the backend to prepare and save the song.
+
 ## Future versions
 
 When app code or native configuration changes, create and share a new APK. For an internal/shareable Android build:
