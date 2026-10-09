@@ -1,6 +1,7 @@
 export const formatTime = (duration: number) => {
-  const minutes = Math.floor(duration / 60);
-  const seconds = duration % 60;
+  const totalSeconds = Math.max(0, Math.floor(duration));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 

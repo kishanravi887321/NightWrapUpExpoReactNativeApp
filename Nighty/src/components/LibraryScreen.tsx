@@ -1,14 +1,17 @@
 import React, { useRef, useState } from 'react';
 import {
   Animated,
+  ActivityIndicator,
   Dimensions,
   Image,
+  Modal,
   PanResponder,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -71,6 +74,12 @@ type LibraryScreenProps = {
   onTogglePlay: () => void;
   onRefresh: () => void;
   isPlaying: boolean;
+  sharedYoutubeUrl: string | null;
+  isSavingSharedSong: boolean;
+  onSaveSharedSong: (libraryId: string) => void;
+  onDismissSharedSong: () => void;
+  isCreatingLibrary: boolean;
+  onCreateLibrary: (name: string, description: string) => Promise<LibraryItem>;
 };
 
 /* ─── Pull-up / Pull-down Bottom Sheet Player ─── */
@@ -322,13 +331,189 @@ export function LibraryScreen({
   onTogglePlay,
   onRefresh,
   isPlaying,
+  sharedYoutubeUrl,
+  isSavingSharedSong,
+  onSaveSharedSong,
+  onDismissSharedSong,
+  isCreatingLibrary,
+  onCreateLibrary,
 }: LibraryScreenProps) {
   const selectedLibrary =
     libraries.find((l) => l._id === selectedLibraryId) ?? null;
+  const [shareSelectedLibraryId, setShareSelectedLibraryId] = useState<string | null>(null);
+  const [isCreateLibraryVisible, setIsCreateLibraryVisible] = useState(false);
+  const [newLibraryName, setNewLibraryName] = useState('');
+  const [newLibraryDescription, setNewLibraryDescription] = useState('');
+
+  React.useEffect(() => {
+    if (!sharedYoutubeUrl) {
+      setShareSelectedLibraryId(null);
+    }
+  }, [sharedYoutubeUrl]);
 
   return (
     <SafeAreaView style={styles.safe}>
       <StatusBar style="light" />
+
+      <Modal
+        visible={Boolean(sharedYoutubeUrl)}
+        transparent
+        animationType="slide"
+        onRequestClose={onDismissSharedSong}
+      >
+        <View style={styles.shareModalBackdrop}>
+          <View style={styles.shareModalCard}>
+            <Text style={styles.shareModalTitle}>Save to library</Text>
+            <Text style={styles.shareModalDescription}>
+              Choose a library for the shared song.
+            </Text>
+
+            <ScrollView
+              style={styles.shareLibraryList}
+              contentContainerStyle={styles.shareLibraryListContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {libraries.map((library) => (
+                <Pressable
+                  key={library._id}
+                  style={({ pressed }) => [
+                    styles.shareLibraryButton,
+                    shareSelectedLibraryId === library._id && styles.shareLibraryButtonSelected,
+                    pressed && styles.shareLibraryButtonPressed,
+                  ]}
+                  disabled={isSavingSharedSong}
+                  onPress={() => setShareSelectedLibraryId(library._id)}
+                >
+                  <View style={styles.shareLibraryText}>
+                    <Text style={styles.shareLibraryName}>{library.name}</Text>
+                    {library.songCount != null && (
+                      <Text style={styles.shareLibraryCount}>{library.songCount} tracks</Text>
+                    )}
+                  </View>
+                  {shareSelectedLibraryId === library._id && (
+                    <Text style={styles.shareLibraryCheck}>✓</Text>
+                  )}
+                </Pressable>
+              ))}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.shareCreateLibraryButton,
+                  pressed && styles.shareCreateLibraryButtonPressed,
+                ]}
+                disabled={isSavingSharedSong || isCreatingLibrary}
+                onPress={() => setIsCreateLibraryVisible(true)}
+              >
+                <Text style={styles.shareCreateLibraryIcon}>+</Text>
+                <Text style={styles.shareCreateLibraryText}>Create new library</Text>
+              </Pressable>
+            </ScrollView>
+
+            {isSavingSharedSong ? (
+              <View style={styles.shareSavingStatus}>
+                <ActivityIndicator color="#1db954" size="small" />
+                <Text style={styles.shareSavingText}>Saving song...</Text>
+              </View>
+            ) : (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.shareSaveButton,
+                  !shareSelectedLibraryId && styles.shareSaveButtonDisabled,
+                  pressed && shareSelectedLibraryId && styles.shareSaveButtonPressed,
+                ]}
+                disabled={!shareSelectedLibraryId}
+                onPress={() => {
+                  if (shareSelectedLibraryId) {
+                    onSaveSharedSong(shareSelectedLibraryId);
+                  }
+                }}
+              >
+                <Text style={styles.shareSaveText}>Save</Text>
+              </Pressable>
+            )}
+
+            {!isSavingSharedSong && (
+              <Pressable style={styles.shareCancelButton} onPress={onDismissSharedSong}>
+                <Text style={styles.shareCancelText}>Cancel</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        visible={isCreateLibraryVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!isCreatingLibrary) setIsCreateLibraryVisible(false);
+        }}
+      >
+        <View style={styles.shareModalBackdrop}>
+          <View style={styles.shareModalCard}>
+            <Text style={styles.shareModalTitle}>Create library</Text>
+            <Text style={styles.shareModalDescription}>
+              Create a library for organizing your songs.
+            </Text>
+            <TextInput
+              value={newLibraryName}
+              onChangeText={setNewLibraryName}
+              placeholder="Library name"
+              placeholderTextColor="#666"
+              style={styles.createLibraryInput}
+              editable={!isCreatingLibrary}
+              autoFocus
+            />
+            <TextInput
+              value={newLibraryDescription}
+              onChangeText={setNewLibraryDescription}
+              placeholder="Description (optional)"
+              placeholderTextColor="#666"
+              style={[styles.createLibraryInput, styles.createLibraryDescriptionInput]}
+              editable={!isCreatingLibrary}
+              multiline
+              numberOfLines={3}
+            />
+            {isCreatingLibrary ? (
+              <View style={styles.shareSavingStatus}>
+                <ActivityIndicator color="#1db954" size="small" />
+                <Text style={styles.shareSavingText}>Creating library...</Text>
+              </View>
+            ) : (
+              <Pressable
+                style={({ pressed }) => [
+                  styles.shareSaveButton,
+                  !newLibraryName.trim() && styles.shareSaveButtonDisabled,
+                  pressed && newLibraryName.trim() && styles.shareSaveButtonPressed,
+                ]}
+                disabled={!newLibraryName.trim()}
+                onPress={async () => {
+                  try {
+                    const createdLibrary = await onCreateLibrary(newLibraryName, newLibraryDescription);
+                    setNewLibraryName('');
+                    setNewLibraryDescription('');
+                    setIsCreateLibraryVisible(false);
+                    if (sharedYoutubeUrl) {
+                      setShareSelectedLibraryId(createdLibrary._id);
+                    }
+                  } catch {
+                    // The parent displays the API error and keeps the modal open.
+                  }
+                }}
+              >
+                <Text style={styles.shareSaveText}>Create</Text>
+              </Pressable>
+            )}
+            {!isCreatingLibrary && (
+              <Pressable
+                style={styles.shareCancelButton}
+                onPress={() => setIsCreateLibraryVisible(false)}
+              >
+                <Text style={styles.shareCancelText}>Cancel</Text>
+              </Pressable>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* ── Top Bar ── */}
       <View style={styles.topBar}>
@@ -427,11 +612,13 @@ export function LibraryScreen({
         ) : null}
 
         {/* ── Library Tabs ── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.tabStrip}
-        >
+        <View style={styles.libraryTabsRow}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.tabStrip}
+            style={styles.libraryTabsScroll}
+          >
           {libraries.map((lib) => {
             const active = lib._id === selectedLibraryId;
             return (
@@ -456,7 +643,17 @@ export function LibraryScreen({
               </Pressable>
             );
           })}
-        </ScrollView>
+          </ScrollView>
+          <Pressable
+            style={({ pressed }) => [
+              styles.addLibraryButton,
+              pressed && styles.addLibraryButtonPressed,
+            ]}
+            onPress={() => setIsCreateLibraryVisible(true)}
+          >
+            <Text style={styles.addLibraryButtonText}>+</Text>
+          </Pressable>
+        </View>
 
         {/* ── Track Count ── */}
         <View style={styles.trackHeader}>
@@ -574,6 +771,155 @@ const styles = StyleSheet.create({
   safe: {
     flex: 1,
     backgroundColor: '#121212',
+  },
+  shareModalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+  },
+  shareModalCard: {
+    maxHeight: '80%',
+    backgroundColor: '#181818',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 28,
+  },
+  shareModalTitle: {
+    color: '#fff',
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  shareModalDescription: {
+    color: '#bbb',
+    fontSize: 15,
+    marginTop: 12,
+  },
+  createLibraryInput: {
+    color: '#fff',
+    backgroundColor: '#252525',
+    borderRadius: 12,
+    fontSize: 16,
+    marginTop: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+  },
+  createLibraryDescriptionInput: {
+    minHeight: 84,
+    textAlignVertical: 'top',
+  },
+  shareLibraryList: {
+    marginTop: 12,
+  },
+  shareLibraryListContent: {
+    gap: 10,
+    paddingBottom: 12,
+  },
+  shareLibraryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#252525',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  shareLibraryButtonPressed: {
+    backgroundColor: '#333',
+  },
+  shareLibraryButtonSelected: {
+    backgroundColor: 'rgba(29, 185, 84, 0.2)',
+    borderWidth: 1,
+    borderColor: '#1db954',
+  },
+  shareLibraryText: {
+    flex: 1,
+  },
+  shareLibraryName: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  shareLibraryCount: {
+    color: '#888',
+    fontSize: 12,
+    marginTop: 3,
+  },
+  shareLibraryCheck: {
+    color: '#1db954',
+    fontSize: 22,
+    fontWeight: '700',
+    marginLeft: 12,
+  },
+  shareCreateLibraryButton: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#1db954',
+    borderStyle: 'dashed',
+    paddingHorizontal: 16,
+    paddingVertical: 13,
+  },
+  shareCreateLibraryButtonPressed: {
+    backgroundColor: 'rgba(29, 185, 84, 0.12)',
+  },
+  shareCreateLibraryIcon: {
+    color: '#1db954',
+    fontSize: 24,
+    fontWeight: '500',
+    marginRight: 10,
+  },
+  shareCreateLibraryText: {
+    color: '#1db954',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  shareSaveButton: {
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: '#1db954',
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  shareSaveButtonDisabled: {
+    backgroundColor: '#3a3a3a',
+  },
+  shareSaveButtonPressed: {
+    backgroundColor: '#18a34a',
+  },
+  shareSaveText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  shareSavingStatus: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: '#252525',
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  shareSavingText: {
+    color: '#1db954',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 10,
+  },
+  shareCancelButton: {
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: '#1db954',
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  shareCancelText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
   scroll: {
     flex: 1,
@@ -730,6 +1076,31 @@ const styles = StyleSheet.create({
   },
 
   /* ── Library Tabs ── */
+  libraryTabsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  libraryTabsScroll: {
+    flex: 1,
+  },
+  addLibraryButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 38,
+    height: 38,
+    marginRight: 12,
+    borderRadius: 19,
+    backgroundColor: '#1db954',
+  },
+  addLibraryButtonPressed: {
+    backgroundColor: '#18a34a',
+  },
+  addLibraryButtonText: {
+    color: '#fff',
+    fontSize: 25,
+    fontWeight: '500',
+    lineHeight: 28,
+  },
   tabStrip: {
     paddingHorizontal: 16,
     paddingVertical: 6,
