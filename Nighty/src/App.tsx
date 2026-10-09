@@ -177,6 +177,11 @@ export default function App() {
     try {
       setError('');
       audio.replace(track.audioUrl);
+      audio.setActiveForLockScreen(true, {
+        title: track.title,
+        artist: track.artist,
+        artworkUrl: track.thumbnail,
+      });
       setAudioSourceUrl(track.audioUrl);
       audio.play();
       setIsPlaying(true);
@@ -228,6 +233,7 @@ export default function App() {
 
   const handleLogout = async () => {
     audio.pause();
+    audio.setActiveForLockScreen(false);
     setAudioSourceUrl(null);
     await clearSession();
     setLibraries([]);

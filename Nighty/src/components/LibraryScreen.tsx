@@ -18,7 +18,7 @@ import { formatTime } from '../utils/format';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MINI_HEIGHT = 64;
-const EXPANDED_HEIGHT = Math.round(SCREEN_HEIGHT * 0.42);
+const EXPANDED_HEIGHT = Math.round(SCREEN_HEIGHT * 0.68);
 const SNAP_THRESHOLD = 60;
 
 /* ─── Artwork with fallback ─── */

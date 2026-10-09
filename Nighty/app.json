@@ -30,7 +30,12 @@
     },
     "plugins": [
       "expo-secure-store",
-      "expo-audio"
+      [
+        "expo-audio",
+        {
+          "enableBackgroundPlayback": true
+        }
+      ]
     ],
     "extra": {
       "eas": {
