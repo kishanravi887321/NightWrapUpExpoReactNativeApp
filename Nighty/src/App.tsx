@@ -4,36 +4,8 @@ import { useShareIntent } from 'expo-share-intent';
 import { LoginScreen } from './components/LoginScreen';
 import { LibraryScreen } from './components/LibraryScreen';
 import { clearSession, createLibrary, fetchLibraries, fetchSongsForLibrary, getStoredToken, markSongPlayed, mobileLogin, saveSongToLibrary } from './services/api';
-import { ApiLibrary, ApiSong, LibraryItem, SongItem } from './types/api';
-import { buildFallbackImage, buildYoutubeThumbnail, normalizeImageUrl } from './utils/format';
-
-const palette = ['#8b5cf6', '#38bdf8', '#f59e0b', '#34d399', '#f472b6'];
-
-const mapLibrary = (library: ApiLibrary, index: number): LibraryItem => ({
-  _id: library._id,
-  name: library.name,
-  description: library.description ?? 'Your personal listening space',
-  accent: palette[index % palette.length],
-  songCount: library.songCount,
-});
-
-const mapSong = (song: ApiSong, index: number): SongItem => ({
-  _id: song._id,
-  title: song.title,
-  artist: song.channelName ?? 'NightWrapUp',
-  duration: Number(song.audio?.duration ?? 180 + index * 12),
-  thumbnail:
-    normalizeImageUrl(song.thumbnail) ??
-    buildYoutubeThumbnail(song.youtubeVideoId, song.youtubeUrl) ??
-    buildFallbackImage(index),
-  fallbackThumbnail:
-    buildYoutubeThumbnail(song.youtubeVideoId, song.youtubeUrl) ?? buildFallbackImage(index),
-  audioUrl: song.audio?.url,
-  tag: song.audio?.status === 'ready' ? 'stream ready' : 'queued',
-  mood: song.playCount && song.playCount > 0 ? 'popular' : 'new',
-  audioReady: Boolean(song.audio?.url && song.audio?.status === 'ready'),
-  playCount: song.playCount ?? 0,
-});
+import { LibraryItem, SongItem } from './types/api';
+import { mapLibrary, mapSong } from './utils/mappers';
 
 export default function App() {
   const [email, setEmail] = useState('');
