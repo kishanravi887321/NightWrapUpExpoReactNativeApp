@@ -260,15 +260,28 @@ export function LibraryScreen({
           </View>
           <Text style={styles.topBarTitle}>NightWrapUp</Text>
         </View>
-        <Pressable
-          style={({ pressed }) => [
-            styles.logoutBtn,
-            pressed && styles.logoutBtnPressed,
-          ]}
-          onPress={onLogout}
-        >
-          <Text style={styles.logoutBtnText}>Sign out</Text>
-        </Pressable>
+        <View style={styles.topBarActions}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.newLibraryBtn,
+              pressed && styles.newLibraryBtnPressed,
+            ]}
+            onPress={() => setIsCreateLibraryVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Create new library"
+          >
+            <Text style={styles.newLibraryBtnText}>New library</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.logoutBtn,
+              pressed && styles.logoutBtnPressed,
+            ]}
+            onPress={onLogout}
+          >
+            <Text style={styles.logoutBtnText}>Sign out</Text>
+          </Pressable>
+        </View>
       </View>
 
       {error ? (
@@ -361,17 +374,6 @@ export function LibraryScreen({
               {isLoading ? 'Loading...' : `${selectedSongs.length} tracks`}
             </Text>
           </View>
-          <Pressable
-            style={({ pressed }) => [
-              styles.addLibraryButton,
-              pressed && styles.addLibraryButtonPressed,
-            ]}
-            onPress={() => setIsCreateLibraryVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Create library"
-          >
-            <Text style={styles.addLibraryButtonText}>+</Text>
-          </Pressable>
         </View>
 
         {/* â”€â”€ Song List â”€â”€ */}
@@ -669,6 +671,27 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
+  topBarActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  newLibraryBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    borderRadius: 7,
+    backgroundColor: 'rgba(29, 185, 84, 0.18)',
+    borderWidth: 1,
+    borderColor: '#1db954',
+  },
+  newLibraryBtnPressed: {
+    backgroundColor: 'rgba(29, 185, 84, 0.3)',
+  },
+  newLibraryBtnText: {
+    color: '#1db954',
+    fontSize: 12,
+    fontWeight: '700',
+  },
   logoutBtn: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -754,24 +777,6 @@ const styles = StyleSheet.create({
   trackHeaderInfo: {
     flex: 1,
     minWidth: 0,
-  },
-  addLibraryButton: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    width: 38,
-    height: 38,
-    marginLeft: 12,
-    borderRadius: 19,
-    backgroundColor: '#1db954',
-  },
-  addLibraryButtonPressed: {
-    backgroundColor: '#18a34a',
-  },
-  addLibraryButtonText: {
-    color: '#fff',
-    fontSize: 25,
-    fontWeight: '500',
-    lineHeight: 28,
   },
   tabStrip: {
     paddingHorizontal: 16,
