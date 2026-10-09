@@ -3,6 +3,7 @@
     "name": "Nighty",
     "slug": "nighty",
     "version": "1.0.0",
+    "scheme": "nighty",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -35,7 +36,8 @@
         {
           "enableBackgroundPlayback": true
         }
-      ]
+      ],
+      "expo-share-intent"
     ],
     "extra": {
       "eas": {

@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
+import { useShareIntent } from 'expo-share-intent';
 import { LoginScreen } from './components/LoginScreen';
 import { LibraryScreen } from './components/LibraryScreen';
-import { clearSession, fetchLibraries, fetchSongsForLibrary, getStoredToken, markSongPlayed, mobileLogin } from './services/api';
+import { clearSession, createLibrary, fetchLibraries, fetchSongsForLibrary, getStoredToken, markSongPlayed, mobileLogin, saveSongToLibrary } from './services/api';
 import { ApiLibrary, ApiSong, LibraryItem, SongItem } from './types/api';
 import { buildFallbackImage, buildYoutubeThumbnail, normalizeImageUrl } from './utils/format';
 
@@ -46,6 +47,10 @@ export default function App() {
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
   const [activeSongId, setActiveSongId] = useState<string | null>(null);
   const [audioSourceUrl, setAudioSourceUrl] = useState<string | null>(null);
+  const [sharedYoutubeUrl, setSharedYoutubeUrl] = useState<string | null>(null);
+  const [isSavingSharedSong, setIsSavingSharedSong] = useState(false);
+  const [isCreatingLibrary, setIsCreatingLibrary] = useState(false);
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
   const audio = useAudioPlayer(null, { updateInterval: 500 });
   const audioStatus = useAudioPlayerStatus(audio);
 
@@ -139,6 +144,21 @@ export default function App() {
       setError(audioError instanceof Error ? `Audio setup failed: ${audioError.message}` : 'Audio setup failed.');
     });
   }, []);
+
+  useEffect(() => {
+    if (!hasShareIntent) {
+      return;
+    }
+
+    const sharedText = shareIntent.webUrl ?? shareIntent.text ?? '';
+    const youtubeUrl = sharedText.match(/https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com\/\S+|youtu\.be\/\S+)/i)?.[0];
+    if (youtubeUrl) {
+      setSharedYoutubeUrl(youtubeUrl);
+    } else {
+      setError('Please share a YouTube video link.');
+      resetShareIntent();
+    }
+  }, [hasShareIntent, resetShareIntent, shareIntent.text, shareIntent.webUrl]);
 
   useEffect(() => {
     setIsPlaying(audioStatus.playing);
@@ -250,6 +270,48 @@ export default function App() {
     console.warn('[NightWrapUp] Pull-to-refresh finished');
   };
 
+  const handleSaveSharedSong = async (libraryId: string) => {
+    if (!sharedYoutubeUrl) {
+      return;
+    }
+
+    try {
+      setIsSavingSharedSong(true);
+      setError('');
+      await saveSongToLibrary(libraryId, sharedYoutubeUrl);
+      setSharedYoutubeUrl(null);
+      resetShareIntent();
+      await loadLibraries(libraryId);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save the shared song.');
+    } finally {
+      setIsSavingSharedSong(false);
+    }
+  };
+
+  const dismissSharedSong = () => {
+    if (isSavingSharedSong) {
+      return;
+    }
+    setSharedYoutubeUrl(null);
+    resetShareIntent();
+  };
+
+  const handleCreateLibrary = async (name: string, description: string): Promise<LibraryItem> => {
+    try {
+      setIsCreatingLibrary(true);
+      setError('');
+      const library = await createLibrary(name, description);
+      await loadLibraries(library._id);
+      return mapLibrary(library, libraries.length);
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Could not create the library.');
+      throw createError;
+    } finally {
+      setIsCreatingLibrary(false);
+    }
+  };
+
   const handleTogglePlay = async () => {
     if (!activeTrack?.audioUrl) {
       if (activeTrack) {
@@ -317,6 +379,12 @@ export default function App() {
       onTogglePlay={() => void handleTogglePlay()}
       onRefresh={() => void handleRefresh()}
       isPlaying={isPlaying}
+      sharedYoutubeUrl={sharedYoutubeUrl}
+      isSavingSharedSong={isSavingSharedSong}
+      onSaveSharedSong={(libraryId) => void handleSaveSharedSong(libraryId)}
+      onDismissSharedSong={dismissSharedSong}
+      isCreatingLibrary={isCreatingLibrary}
+      onCreateLibrary={(name, description) => handleCreateLibrary(name, description)}
     />
   );
 }

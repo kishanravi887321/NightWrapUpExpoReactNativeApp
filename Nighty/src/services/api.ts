@@ -146,8 +146,23 @@ export const mobileLogin = async (email: string, secretKey: string): Promise<Mob
 export const fetchLibraries = async (): Promise<ApiLibrary[]> =>
   requestWithAuth<ApiLibrary[]>('/libraries');
 
+export const createLibrary = async (name: string, description?: string): Promise<ApiLibrary> =>
+  requestWithAuth<ApiLibrary>('/mobile/libraries', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: name.trim(),
+      description: description?.trim() || undefined,
+    }),
+  });
+
 export const fetchSongsForLibrary = async (libraryId: string): Promise<ApiSong[]> =>
   requestWithAuth<ApiSong[]>(`/libraries/${encodeURIComponent(libraryId)}/songs`);
+
+export const saveSongToLibrary = async (libraryId: string, youtubeUrl: string): Promise<ApiSong> =>
+  requestWithAuth<ApiSong>(`/libraries/${encodeURIComponent(libraryId)}/songs`, {
+    method: 'PUT',
+    body: JSON.stringify({ youtubeUrl: youtubeUrl.trim() }),
+  });
 
 export const markSongPlayed = async (libraryId: string, songId: string) =>
   requestWithAuth<{ success: boolean }>(`/libraries/${encodeURIComponent(libraryId)}/songs/${encodeURIComponent(songId)}/play`, {
