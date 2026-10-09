@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -107,6 +108,14 @@ export function LoginScreen({
           <Text style={styles.hint}>
             Find your mobile key in your NightWrapUp profile settings.
           </Text>
+          <Pressable
+            onPress={() => {
+              void Linking.openURL('https://nightwrapup.ziax.online/');
+            }}
+            accessibilityRole="link"
+          >
+            <Text style={styles.websiteLink}>Create or manage your mobile key</Text>
+          </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -224,5 +233,12 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 12,
     lineHeight: 18,
+  },
+  websiteLink: {
+    marginTop: 12,
+    textAlign: 'center',
+    color: '#1db954',
+    fontSize: 13,
+    fontWeight: '700',
   },
 });

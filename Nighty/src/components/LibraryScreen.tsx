@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Modal,
   Pressable,
   RefreshControl,
@@ -79,8 +80,17 @@ export function LibraryScreen({
     libraries.find((l) => l._id === selectedLibraryId) ?? null;
   const [shareSelectedLibraryId, setShareSelectedLibraryId] = useState<string | null>(null);
   const [isCreateLibraryVisible, setIsCreateLibraryVisible] = useState(false);
+  const [isMenuVisible, setIsMenuVisible] = useState(false);
   const [newLibraryName, setNewLibraryName] = useState('');
   const [newLibraryDescription, setNewLibraryDescription] = useState('');
+  const [collapsibleHeaderHeight, setCollapsibleHeaderHeight] = useState(0);
+  const scrollY = useRef(new Animated.Value(0)).current;
+  const shouldCollapseHeader = selectedSongs.length > 1;
+  const headerTranslateY = scrollY.interpolate({
+    inputRange: [0, collapsibleHeaderHeight || 1],
+    outputRange: [0, shouldCollapseHeader ? -(collapsibleHeaderHeight || 1) : 0],
+    extrapolate: 'clamp',
+  });
 
   React.useEffect(() => {
     if (!sharedYoutubeUrl) {
@@ -252,35 +262,59 @@ export function LibraryScreen({
         </View>
       </Modal>
 
+      <Modal
+        visible={isMenuVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsMenuVisible(false)}
+      >
+        <Pressable
+          style={styles.menuBackdrop}
+          onPress={() => setIsMenuVisible(false)}
+        >
+          <View style={styles.menuCard}>
+            <Pressable
+              style={styles.menuItem}
+              onPress={() => {
+                setIsMenuVisible(false);
+                setIsCreateLibraryVisible(true);
+              }}
+            >
+              <Text style={styles.menuItemIcon}>+</Text>
+              <Text style={styles.menuItemText}>New library</Text>
+            </Pressable>
+            <Pressable
+              style={styles.menuItem}
+              onPress={() => {
+                setIsMenuVisible(false);
+                onLogout();
+              }}
+            >
+              <Text style={styles.menuItemIcon}>↪</Text>
+              <Text style={styles.menuItemText}>Sign out</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
       {/* â”€â”€ Top Bar â”€â”€ */}
       <View style={styles.topBar}>
         <View style={styles.topBarLeft}>
+          <Pressable
+            style={({ pressed }) => [
+              styles.menuButton,
+              pressed && styles.menuButtonPressed,
+            ]}
+            onPress={() => setIsMenuVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open navigation menu"
+          >
+            <Text style={styles.menuButtonText}>☰</Text>
+          </Pressable>
           <View style={styles.topBarIcon}>
             <Text style={styles.topBarIconText}>♫</Text>
           </View>
           <Text style={styles.topBarTitle}>NightWrapUp</Text>
-        </View>
-        <View style={styles.topBarActions}>
-          <Pressable
-            style={({ pressed }) => [
-              styles.newLibraryBtn,
-              pressed && styles.newLibraryBtnPressed,
-            ]}
-            onPress={() => setIsCreateLibraryVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel="Create new library"
-          >
-            <Text style={styles.newLibraryBtnText}>New library</Text>
-          </Pressable>
-          <Pressable
-            style={({ pressed }) => [
-              styles.logoutBtn,
-              pressed && styles.logoutBtnPressed,
-            ]}
-            onPress={onLogout}
-          >
-            <Text style={styles.logoutBtnText}>Sign out</Text>
-          </Pressable>
         </View>
       </View>
 
@@ -290,10 +324,99 @@ export function LibraryScreen({
         </View>
       ) : null}
 
-      <ScrollView
+      <View style={styles.libraryContent}>
+        <Animated.View
+          style={[
+            styles.collapsibleHeader,
+            { transform: [{ translateY: headerTranslateY }] },
+          ]}
+          onLayout={(event) => {
+            const height = event.nativeEvent.layout.height;
+            if (height !== collapsibleHeaderHeight) {
+              setCollapsibleHeaderHeight(height);
+            }
+          }}
+        >
+          {/* â”€â”€ Now Playing Card â”€â”€ */}
+          {activeTrack ? (
+            <View style={styles.nowPlaying}>
+              <Text style={styles.npLabel}>NOW PLAYING</Text>
+              <View style={styles.npRow}>
+                <ModularSongArtwork
+                  uri={activeTrack.thumbnail}
+                  fallbackUri={activeTrack.fallbackThumbnail}
+                  style={styles.npCover}
+                />
+                <View style={styles.npMeta}>
+                  <Text style={styles.npTitle} numberOfLines={2}>
+                    {activeTrack.title}
+                  </Text>
+                  <Text style={styles.npArtist} numberOfLines={1}>
+                    {activeTrack.artist}
+                  </Text>
+                  <Text style={styles.npDuration}>
+                    {formatTime(activeTrack.duration)}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ) : null}
+
+          {/* â”€â”€ Library Tabs â”€â”€ */}
+          <View style={styles.libraryTabsRow}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.tabStrip}
+              style={styles.libraryTabsScroll}
+            >
+              {libraries.map((lib) => {
+                const active = lib._id === selectedLibraryId;
+                return (
+                  <Pressable
+                    key={lib._id}
+                    style={[styles.tab, active && styles.tabActive]}
+                    onPress={() => onLibraryChange(lib._id)}
+                  >
+                    <Text style={[styles.tabText, active && styles.tabTextActive]}>
+                      {lib.name}
+                    </Text>
+                    {lib.songCount != null && (
+                      <Text style={[styles.tabCount, active && styles.tabCountActive]}>
+                        {lib.songCount}
+                      </Text>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          {/* â”€â”€ Track Count â”€â”€ */}
+          <View style={styles.trackHeader}>
+            <View style={styles.trackHeaderInfo}>
+              <Text style={styles.trackHeaderTitle}>
+                {selectedLibrary?.name ?? 'Tracks'}
+              </Text>
+              <Text style={styles.trackHeaderCount}>
+                {isLoading ? 'Loading...' : `${selectedSongs.length} tracks`}
+              </Text>
+            </View>
+          </View>
+        </Animated.View>
+
+        <Animated.ScrollView
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingTop: collapsibleHeaderHeight },
+        ]}
         showsVerticalScrollIndicator={false}
+        scrollEventThrottle={16}
+        onScroll={Animated.event(
+          [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+          { useNativeDriver: true },
+        )}
         refreshControl={
           <RefreshControl
             refreshing={isLoading}
@@ -304,78 +427,6 @@ export function LibraryScreen({
           />
         }
       >
-        {/* â”€â”€ Now Playing Card â”€â”€ */}
-        {activeTrack ? (
-          <View style={styles.nowPlaying}>
-            <Text style={styles.npLabel}>NOW PLAYING</Text>
-            <View style={styles.npRow}>
-              <ModularSongArtwork
-                uri={activeTrack.thumbnail}
-                fallbackUri={activeTrack.fallbackThumbnail}
-                style={styles.npCover}
-              />
-              <View style={styles.npMeta}>
-                <Text style={styles.npTitle} numberOfLines={2}>
-                  {activeTrack.title}
-                </Text>
-                <Text style={styles.npArtist} numberOfLines={1}>
-                  {activeTrack.artist}
-                </Text>
-                <Text style={styles.npDuration}>
-                  {formatTime(activeTrack.duration)}
-                </Text>
-              </View>
-            </View>
-          </View>
-        ) : null}
-
-        {/* â”€â”€ Library Tabs â”€â”€ */}
-        <View style={styles.libraryTabsRow}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabStrip}
-            style={styles.libraryTabsScroll}
-          >
-          {libraries.map((lib) => {
-            const active = lib._id === selectedLibraryId;
-            return (
-              <Pressable
-                key={lib._id}
-                style={[styles.tab, active && styles.tabActive]}
-                onPress={() => onLibraryChange(lib._id)}
-              >
-                <Text style={[styles.tabText, active && styles.tabTextActive]}>
-                  {lib.name}
-                </Text>
-                {lib.songCount != null && (
-                  <Text
-                    style={[
-                      styles.tabCount,
-                      active && styles.tabCountActive,
-                    ]}
-                  >
-                    {lib.songCount}
-                  </Text>
-                )}
-              </Pressable>
-            );
-          })}
-          </ScrollView>
-        </View>
-
-        {/* â”€â”€ Track Count â”€â”€ */}
-        <View style={styles.trackHeader}>
-          <View style={styles.trackHeaderInfo}>
-            <Text style={styles.trackHeaderTitle}>
-              {selectedLibrary?.name ?? 'Tracks'}
-            </Text>
-            <Text style={styles.trackHeaderCount}>
-              {isLoading ? 'Loading...' : `${selectedSongs.length} tracks`}
-            </Text>
-          </View>
-        </View>
-
         {/* â”€â”€ Song List â”€â”€ */}
         {selectedSongs.length === 0 ? (
           <View style={styles.empty}>
@@ -457,7 +508,8 @@ export function LibraryScreen({
 
         {/* Bottom spacing for the sheet */}
         <View style={{ height: MINI_HEIGHT + 20 }} />
-      </ScrollView>
+        </Animated.ScrollView>
+      </View>
 
       {/* â”€â”€ Pull-up/Pull-down Bottom Sheet Player â”€â”€ */}
       {activeTrack ? (
@@ -635,6 +687,18 @@ const styles = StyleSheet.create({
   scroll: {
     flex: 1,
   },
+  libraryContent: {
+    flex: 1,
+    position: 'relative',
+  },
+  collapsibleHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 2,
+    backgroundColor: '#121212',
+  },
   scrollContent: {
     paddingBottom: 20,
   },
@@ -652,6 +716,22 @@ const styles = StyleSheet.create({
   topBarLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+  },
+  menuButton: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+    borderRadius: 18,
+  },
+  menuButtonPressed: {
+    backgroundColor: '#252525',
+  },
+  menuButtonText: {
+    color: '#fff',
+    fontSize: 24,
+    lineHeight: 28,
   },
   topBarIcon: {
     width: 32,
@@ -671,40 +751,41 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
   },
-  topBarActions: {
+  menuBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+  },
+  menuCard: {
+    width: 190,
+    marginTop: 58,
+    marginLeft: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#252525',
+    borderWidth: 1,
+    borderColor: '#333',
+    shadowColor: '#000',
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
   },
-  newLibraryBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 7,
-    backgroundColor: 'rgba(29, 185, 84, 0.18)',
-    borderWidth: 1,
-    borderColor: '#1db954',
-  },
-  newLibraryBtnPressed: {
-    backgroundColor: 'rgba(29, 185, 84, 0.3)',
-  },
-  newLibraryBtnText: {
+  menuItemIcon: {
+    width: 26,
     color: '#1db954',
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 22,
+    textAlign: 'center',
   },
-  logoutBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    backgroundColor: '#1e1e1e',
-  },
-  logoutBtnPressed: {
-    backgroundColor: '#2a2a2a',
-  },
-  logoutBtnText: {
-    color: '#999',
-    fontSize: 13,
+  menuItemText: {
+    color: '#fff',
+    fontSize: 15,
     fontWeight: '600',
+    marginLeft: 10,
   },
 
   /* â”€â”€ Error â”€â”€ */
