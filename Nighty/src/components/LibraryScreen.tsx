@@ -62,6 +62,11 @@ type LibraryScreenProps = {
   onSongPress: (songId: string) => void;
   onPrevious: () => void;
   onNext: () => void;
+  currentTime: number;
+  totalDuration: number;
+  trackNumber: number;
+  trackCount: number;
+  onSeek: (seconds: number) => void;
   onLogout: () => void;
   onTogglePlay: () => void;
   onRefresh: () => void;
@@ -75,16 +80,27 @@ function BottomSheetPlayer({
   onTogglePlay,
   onPrevious,
   onNext,
+  currentTime,
+  totalDuration,
+  trackNumber,
+  trackCount,
+  onSeek,
 }: {
   activeTrack: SongItem;
   isPlaying: boolean;
   onTogglePlay: () => void;
   onPrevious: () => void;
   onNext: () => void;
+  currentTime: number;
+  totalDuration: number;
+  trackNumber: number;
+  trackCount: number;
+  onSeek: (seconds: number) => void;
 }) {
   const sheetHeight = useRef(new Animated.Value(MINI_HEIGHT)).current;
   const isExpanded = useRef(false);
   const lastHeight = useRef(MINI_HEIGHT);
+  const [progressWidth, setProgressWidth] = useState(1);
 
   const panResponder = useRef(
     PanResponder.create({
@@ -225,14 +241,30 @@ function BottomSheetPlayer({
           {activeTrack.artist}
         </Text>
 
-        {/* Duration bar placeholder */}
+        <Text style={styles.queueLabel}>
+          {trackNumber} of {trackCount} in this library
+        </Text>
+
         <View style={styles.progressRow}>
-          <View style={styles.progressBar}>
-            <View style={styles.progressFill} />
-          </View>
+          <Pressable
+            style={styles.progressBar}
+            onLayout={(event) => setProgressWidth(event.nativeEvent.layout.width)}
+            onPress={(event) => {
+              const width = event.nativeEvent.locationX;
+              const progress = Math.max(0, Math.min(1, width / progressWidth));
+              onSeek(progress * totalDuration);
+            }}
+          >
+            <View
+              style={[
+                styles.progressFill,
+                { width: `${totalDuration > 0 ? Math.min(100, (currentTime / totalDuration) * 100) : 0}%` },
+              ]}
+            />
+          </Pressable>
           <View style={styles.progressTimes}>
-            <Text style={styles.progressTime}>0:00</Text>
-            <Text style={styles.progressTime}>{formatTime(activeTrack.duration)}</Text>
+            <Text style={styles.progressTime}>{formatTime(currentTime)}</Text>
+            <Text style={styles.progressTime}>-{formatTime(Math.max(0, totalDuration - currentTime))}</Text>
           </View>
         </View>
 
@@ -281,6 +313,11 @@ export function LibraryScreen({
   onSongPress,
   onPrevious,
   onNext,
+  currentTime,
+  totalDuration,
+  trackNumber,
+  trackCount,
+  onSeek,
   onLogout,
   onTogglePlay,
   onRefresh,
@@ -522,6 +559,11 @@ export function LibraryScreen({
           onTogglePlay={onTogglePlay}
           onPrevious={onPrevious}
           onNext={onNext}
+          currentTime={currentTime}
+          totalDuration={totalDuration}
+          trackNumber={trackNumber}
+          trackCount={trackCount}
+          onSeek={onSeek}
         />
       ) : null}
     </SafeAreaView>
@@ -962,6 +1004,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 3,
     textAlign: 'center',
+  },
+  queueLabel: {
+    color: '#888',
+    fontSize: 11,
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 2,
   },
 
   /* ── Progress Bar ── */

@@ -58,6 +58,9 @@ export default function App() {
     () => selectedSongs.find((song) => song._id === activeSongId) ?? selectedSongs[0] ?? null,
     [activeSongId, selectedSongs],
   );
+  const currentTime = audioStatus.currentTime ?? 0;
+  const totalDuration = audioStatus.duration > 0 ? audioStatus.duration : activeTrack?.duration ?? 0;
+  const trackNumber = Math.max(0, selectedSongs.findIndex((song) => song._id === activeTrack?._id) + 1);
 
   const loadSongsForLibrary = async (libraryId: string): Promise<SongItem[]> => {
     const songs = await fetchSongsForLibrary(libraryId);
@@ -265,6 +268,14 @@ export default function App() {
     }
   };
 
+  const handleSeek = async (seconds: number) => {
+    try {
+      await audio.seekTo(Math.max(0, seconds));
+    } catch (seekError) {
+      setError(seekError instanceof Error ? `Unable to seek: ${seekError.message}` : 'Unable to seek.');
+    }
+  };
+
   if (!isAuthenticated) {
     return (
       <LoginScreen
@@ -291,6 +302,11 @@ export default function App() {
       onSongPress={(id) => void handleSongPress(id)}
       onPrevious={() => void handleTrackChange(-1)}
       onNext={() => void handleTrackChange(1)}
+      currentTime={currentTime}
+      totalDuration={totalDuration}
+      trackNumber={trackNumber}
+      trackCount={selectedSongs.length}
+      onSeek={(seconds) => void handleSeek(seconds)}
       onLogout={() => void handleLogout()}
       onTogglePlay={() => void handleTogglePlay()}
       onRefresh={() => void handleRefresh()}
