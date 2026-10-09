@@ -1,11 +1,7 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import {
-  Animated,
   ActivityIndicator,
-  Dimensions,
-  Image,
   Modal,
-  PanResponder,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -18,41 +14,10 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LibraryItem, SongItem } from '../types/api';
 import { formatTime } from '../utils/format';
+import { BottomSheetPlayer as ModularBottomSheetPlayer } from './BottomSheetPlayer';
+import { SongArtwork as ModularSongArtwork } from './SongArtwork';
 
-const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MINI_HEIGHT = 64;
-const EXPANDED_HEIGHT = Math.round(SCREEN_HEIGHT * 0.68);
-const SNAP_THRESHOLD = 60;
-
-/* ─── Artwork with fallback ─── */
-function SongArtwork({
-  uri,
-  fallbackUri,
-  style,
-}: {
-  uri: string;
-  fallbackUri: string;
-  style: object;
-}) {
-  const [imageUri, setImageUri] = useState(uri);
-
-  React.useEffect(() => {
-    setImageUri(uri);
-  }, [uri]);
-
-  return (
-    <Image
-      source={{ uri: imageUri }}
-      style={style}
-      resizeMode="cover"
-      onError={() => {
-        if (imageUri !== fallbackUri) {
-          setImageUri(fallbackUri);
-        }
-      }}
-    />
-  );
-}
 
 type LibraryScreenProps = {
   libraries: LibraryItem[];
@@ -82,235 +47,7 @@ type LibraryScreenProps = {
   onCreateLibrary: (name: string, description: string) => Promise<LibraryItem>;
 };
 
-/* ─── Pull-up / Pull-down Bottom Sheet Player ─── */
-function BottomSheetPlayer({
-  activeTrack,
-  isPlaying,
-  onTogglePlay,
-  onPrevious,
-  onNext,
-  currentTime,
-  totalDuration,
-  trackNumber,
-  trackCount,
-  onSeek,
-}: {
-  activeTrack: SongItem;
-  isPlaying: boolean;
-  onTogglePlay: () => void;
-  onPrevious: () => void;
-  onNext: () => void;
-  currentTime: number;
-  totalDuration: number;
-  trackNumber: number;
-  trackCount: number;
-  onSeek: (seconds: number) => void;
-}) {
-  const sheetHeight = useRef(new Animated.Value(MINI_HEIGHT)).current;
-  const isExpanded = useRef(false);
-  const lastHeight = useRef(MINI_HEIGHT);
-  const [progressWidth, setProgressWidth] = useState(1);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gesture) =>
-        Math.abs(gesture.dy) > 8,
-      onPanResponderGrant: () => {
-        sheetHeight.stopAnimation((val) => {
-          lastHeight.current = val;
-          sheetHeight.setOffset(val);
-          sheetHeight.setValue(0);
-        });
-      },
-      onPanResponderMove: (_, gesture) => {
-        // Dragging up = negative dy = increase height
-        const newVal = -gesture.dy;
-        sheetHeight.setValue(newVal);
-      },
-      onPanResponderRelease: (_, gesture) => {
-        sheetHeight.flattenOffset();
-        const currentHeight = lastHeight.current + (-gesture.dy);
-        const goingUp = gesture.dy < 0;
-
-        let target: number;
-        if (goingUp && (currentHeight > MINI_HEIGHT + SNAP_THRESHOLD || Math.abs(gesture.vy) > 0.5)) {
-          target = EXPANDED_HEIGHT;
-          isExpanded.current = true;
-        } else if (!goingUp && (currentHeight < EXPANDED_HEIGHT - SNAP_THRESHOLD || Math.abs(gesture.vy) > 0.5)) {
-          target = MINI_HEIGHT;
-          isExpanded.current = false;
-        } else {
-          target = isExpanded.current ? EXPANDED_HEIGHT : MINI_HEIGHT;
-        }
-
-        Animated.spring(sheetHeight, {
-          toValue: target,
-          friction: 9,
-          tension: 80,
-          useNativeDriver: false,
-        }).start(() => {
-          lastHeight.current = target;
-        });
-      },
-    }),
-  ).current;
-
-  const toggleSheet = () => {
-    const target = isExpanded.current ? MINI_HEIGHT : EXPANDED_HEIGHT;
-    isExpanded.current = !isExpanded.current;
-    Animated.spring(sheetHeight, {
-      toValue: target,
-      friction: 9,
-      tension: 80,
-      useNativeDriver: false,
-    }).start(() => {
-      lastHeight.current = target;
-    });
-  };
-
-  // Interpolations
-  const clampedHeight = sheetHeight.interpolate({
-    inputRange: [MINI_HEIGHT, EXPANDED_HEIGHT],
-    outputRange: [MINI_HEIGHT, EXPANDED_HEIGHT],
-    extrapolate: 'clamp',
-  });
-
-  const expandedOpacity = sheetHeight.interpolate({
-    inputRange: [MINI_HEIGHT, MINI_HEIGHT + 40, EXPANDED_HEIGHT],
-    outputRange: [0, 0, 1],
-    extrapolate: 'clamp',
-  });
-
-  const miniOpacity = sheetHeight.interpolate({
-    inputRange: [MINI_HEIGHT, MINI_HEIGHT + 60, EXPANDED_HEIGHT],
-    outputRange: [1, 0, 0],
-    extrapolate: 'clamp',
-  });
-
-  const expandedCoverSize = sheetHeight.interpolate({
-    inputRange: [MINI_HEIGHT, EXPANDED_HEIGHT],
-    outputRange: [0, 120],
-    extrapolate: 'clamp',
-  });
-
-  return (
-    <Animated.View style={[styles.sheet, { height: clampedHeight }]}>
-      {/* Drag Handle */}
-      <View {...panResponder.panHandlers} style={styles.dragZone}>
-        <Pressable onPress={toggleSheet} style={styles.dragHandleWrap}>
-          <View style={styles.dragHandle} />
-        </Pressable>
-
-        {/* ── Mini Player (visible when collapsed) ── */}
-        <Animated.View style={[styles.miniRow, { opacity: miniOpacity }]}>
-          <SongArtwork
-            uri={activeTrack.thumbnail}
-            fallbackUri={activeTrack.fallbackThumbnail}
-            style={styles.miniCover}
-          />
-          <View style={styles.miniMeta}>
-            <Text style={styles.miniTitle} numberOfLines={1}>
-              {activeTrack.title}
-            </Text>
-            <Text style={styles.miniArtist} numberOfLines={1}>
-              {activeTrack.artist}
-            </Text>
-          </View>
-          <Pressable style={styles.miniBtn} onPress={onPrevious}>
-            <Text style={styles.miniBtnText}>⏮</Text>
-          </Pressable>
-          <Pressable style={styles.miniBtnPlay} onPress={onTogglePlay}>
-            <Text style={styles.miniBtnPlayText}>{isPlaying ? '⏸' : '▶'}</Text>
-          </Pressable>
-          <Pressable style={styles.miniBtn} onPress={onNext}>
-            <Text style={styles.miniBtnText}>⏭</Text>
-          </Pressable>
-        </Animated.View>
-      </View>
-
-      {/* ── Expanded Player (visible when pulled up) ── */}
-      <Animated.View style={[styles.expandedContent, { opacity: expandedOpacity }]}>
-        {/* Large Album Art */}
-        <View style={styles.expandedCoverWrap}>
-          <Animated.View style={{ width: expandedCoverSize, height: expandedCoverSize, borderRadius: 12, overflow: 'hidden' }}>
-            <SongArtwork
-              uri={activeTrack.thumbnail}
-              fallbackUri={activeTrack.fallbackThumbnail}
-              style={styles.expandedCover}
-            />
-          </Animated.View>
-        </View>
-
-        {/* Track Info */}
-        <Text style={styles.expandedTitle} numberOfLines={2}>
-          {activeTrack.title}
-        </Text>
-        <Text style={styles.expandedArtist} numberOfLines={1}>
-          {activeTrack.artist}
-        </Text>
-
-        <Text style={styles.queueLabel}>
-          {trackNumber} of {trackCount} in this library
-        </Text>
-
-        <View style={styles.progressRow}>
-          <Pressable
-            style={styles.progressBar}
-            onLayout={(event) => setProgressWidth(event.nativeEvent.layout.width)}
-            onPress={(event) => {
-              const width = event.nativeEvent.locationX;
-              const progress = Math.max(0, Math.min(1, width / progressWidth));
-              onSeek(progress * totalDuration);
-            }}
-          >
-            <View
-              style={[
-                styles.progressFill,
-                { width: `${totalDuration > 0 ? Math.min(100, (currentTime / totalDuration) * 100) : 0}%` },
-              ]}
-            />
-          </Pressable>
-          <View style={styles.progressTimes}>
-            <Text style={styles.progressTime}>{formatTime(currentTime)}</Text>
-            <Text style={styles.progressTime}>-{formatTime(Math.max(0, totalDuration - currentTime))}</Text>
-          </View>
-        </View>
-
-        {/* Full Transport Controls */}
-        <View style={styles.expandedControls}>
-          <Pressable
-            style={({ pressed }) => [styles.exBtn, pressed && styles.exBtnPressed]}
-            onPress={onPrevious}
-          >
-            <Text style={styles.exBtnText}>⏮</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.exBtnPlay, pressed && styles.exBtnPlayPressed]}
-            onPress={onTogglePlay}
-          >
-            <Text style={styles.exBtnPlayText}>{isPlaying ? '⏸' : '▶'}</Text>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [styles.exBtn, pressed && styles.exBtnPressed]}
-            onPress={onNext}
-          >
-            <Text style={styles.exBtnText}>⏭</Text>
-          </Pressable>
-        </View>
-
-        {/* Status */}
-        <Text style={styles.expandedStatus}>
-          {isPlaying ? '♫ Playing' : '⏸ Paused'} · {activeTrack.audioReady ? 'Stream ready' : 'Queued'}
-        </Text>
-      </Animated.View>
-    </Animated.View>
-  );
-}
-
-/* ─── Main Library Screen ─── */
+/* â”€â”€â”€ Pull-up / Pull-down Bottom Sheet Player â”€â”€â”€ */
 export function LibraryScreen({
   libraries,
   selectedLibraryId,
@@ -515,7 +252,7 @@ export function LibraryScreen({
         </View>
       </Modal>
 
-      {/* ── Top Bar ── */}
+      {/* â”€â”€ Top Bar â”€â”€ */}
       <View style={styles.topBar}>
         <View style={styles.topBarLeft}>
           <View style={styles.topBarIcon}>
@@ -554,12 +291,12 @@ export function LibraryScreen({
           />
         }
       >
-        {/* ── Now Playing Card ── */}
+        {/* â”€â”€ Now Playing Card â”€â”€ */}
         {activeTrack ? (
           <View style={styles.nowPlaying}>
             <Text style={styles.npLabel}>NOW PLAYING</Text>
             <View style={styles.npRow}>
-              <SongArtwork
+              <ModularSongArtwork
                 uri={activeTrack.thumbnail}
                 fallbackUri={activeTrack.fallbackThumbnail}
                 style={styles.npCover}
@@ -576,42 +313,10 @@ export function LibraryScreen({
                 </Text>
               </View>
             </View>
-            {/* Inline controls */}
-            <View style={styles.npControls}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.npBtn,
-                  pressed && styles.npBtnPressed,
-                ]}
-                onPress={onPrevious}
-              >
-                <Text style={styles.npBtnText}>⏮</Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.npBtnPlay,
-                  pressed && styles.npBtnPlayPressed,
-                ]}
-                onPress={onTogglePlay}
-              >
-                <Text style={styles.npBtnPlayText}>
-                  {isPlaying ? '⏸' : '▶'}
-                </Text>
-              </Pressable>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.npBtn,
-                  pressed && styles.npBtnPressed,
-                ]}
-                onPress={onNext}
-              >
-                <Text style={styles.npBtnText}>⏭</Text>
-              </Pressable>
-            </View>
           </View>
         ) : null}
 
-        {/* ── Library Tabs ── */}
+        {/* â”€â”€ Library Tabs â”€â”€ */}
         <View style={styles.libraryTabsRow}>
           <ScrollView
             horizontal
@@ -644,28 +349,32 @@ export function LibraryScreen({
             );
           })}
           </ScrollView>
+        </View>
+
+        {/* â”€â”€ Track Count â”€â”€ */}
+        <View style={styles.trackHeader}>
+          <View style={styles.trackHeaderInfo}>
+            <Text style={styles.trackHeaderTitle}>
+              {selectedLibrary?.name ?? 'Tracks'}
+            </Text>
+            <Text style={styles.trackHeaderCount}>
+              {isLoading ? 'Loading...' : `${selectedSongs.length} tracks`}
+            </Text>
+          </View>
           <Pressable
             style={({ pressed }) => [
               styles.addLibraryButton,
               pressed && styles.addLibraryButtonPressed,
             ]}
             onPress={() => setIsCreateLibraryVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Create library"
           >
             <Text style={styles.addLibraryButtonText}>+</Text>
           </Pressable>
         </View>
 
-        {/* ── Track Count ── */}
-        <View style={styles.trackHeader}>
-          <Text style={styles.trackHeaderTitle}>
-            {selectedLibrary?.name ?? 'Tracks'}
-          </Text>
-          <Text style={styles.trackHeaderCount}>
-            {isLoading ? 'Loading...' : `${selectedSongs.length} tracks`}
-          </Text>
-        </View>
-
-        {/* ── Song List ── */}
+        {/* â”€â”€ Song List â”€â”€ */}
         {selectedSongs.length === 0 ? (
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>🎵</Text>
@@ -705,7 +414,7 @@ export function LibraryScreen({
                   </View>
 
                   {/* Cover */}
-                  <SongArtwork
+                  <ModularSongArtwork
                     uri={song.thumbnail}
                     fallbackUri={song.fallbackThumbnail}
                     style={styles.songCover}
@@ -748,9 +457,9 @@ export function LibraryScreen({
         <View style={{ height: MINI_HEIGHT + 20 }} />
       </ScrollView>
 
-      {/* ── Pull-up/Pull-down Bottom Sheet Player ── */}
+      {/* â”€â”€ Pull-up/Pull-down Bottom Sheet Player â”€â”€ */}
       {activeTrack ? (
-        <BottomSheetPlayer
+        <ModularBottomSheetPlayer
           activeTrack={activeTrack}
           isPlaying={isPlaying}
           onTogglePlay={onTogglePlay}
@@ -928,7 +637,7 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
 
-  /* ── Top Bar ── */
+  /* â”€â”€ Top Bar â”€â”€ */
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -975,7 +684,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  /* ── Error ── */
+  /* â”€â”€ Error â”€â”€ */
   errorBanner: {
     backgroundColor: 'rgba(220, 50, 50, 0.15)',
     paddingHorizontal: 16,
@@ -987,7 +696,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  /* ── Now Playing ── */
+  /* â”€â”€ Now Playing â”€â”€ */
   nowPlaying: {
     margin: 16,
     backgroundColor: '#1a1a1a',
@@ -1034,48 +743,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
     fontWeight: '600',
   },
-  npControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 16,
-    paddingTop: 14,
-    borderTopWidth: 1,
-    borderTopColor: '#252525',
-    gap: 16,
-  },
-  npBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#252525',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  npBtnPressed: {
-    backgroundColor: '#333',
-  },
-  npBtnText: {
-    color: '#ccc',
-    fontSize: 18,
-  },
-  npBtnPlay: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#1db954',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  npBtnPlayPressed: {
-    backgroundColor: '#18a34a',
-  },
-  npBtnPlayText: {
-    color: '#fff',
-    fontSize: 22,
-  },
-
-  /* ── Library Tabs ── */
+  /* â”€â”€ Library Tabs â”€â”€ */
   libraryTabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1083,12 +751,16 @@ const styles = StyleSheet.create({
   libraryTabsScroll: {
     flex: 1,
   },
+  trackHeaderInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
   addLibraryButton: {
     alignItems: 'center',
     justifyContent: 'center',
     width: 38,
     height: 38,
-    marginRight: 12,
+    marginLeft: 12,
     borderRadius: 19,
     backgroundColor: '#1db954',
   },
@@ -1139,7 +811,7 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.7)',
   },
 
-  /* ── Track Header ── */
+  /* â”€â”€ Track Header â”€â”€ */
   trackHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1159,7 +831,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  /* ── Song List ── */
+  /* â”€â”€ Song List â”€â”€ */
   songList: {
     paddingHorizontal: 8,
   },
@@ -1239,7 +911,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  /* ── Empty ── */
+  /* â”€â”€ Empty â”€â”€ */
   empty: {
     alignItems: 'center',
     paddingVertical: 48,
@@ -1262,9 +934,9 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  /* ══════════════════════════════════════
-     ── Bottom Sheet (Pull-up Player) ──
-     ══════════════════════════════════════ */
+  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+     â”€â”€ Bottom Sheet (Pull-up Player) â”€â”€
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
   sheet: {
     position: 'absolute',
     bottom: 0,
@@ -1292,7 +964,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#444',
   },
 
-  /* ── Mini Row (collapsed) ── */
+  /* â”€â”€ Mini Row (collapsed) â”€â”€ */
   miniRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1348,7 +1020,7 @@ const styles = StyleSheet.create({
     fontSize: 17,
   },
 
-  /* ── Expanded Content ── */
+  /* â”€â”€ Expanded Content â”€â”€ */
   expandedContent: {
     paddingHorizontal: 24,
     paddingTop: 4,
@@ -1384,7 +1056,7 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
-  /* ── Progress Bar ── */
+  /* â”€â”€ Progress Bar â”€â”€ */
   progressRow: {
     width: '100%',
     marginTop: 14,
@@ -1412,7 +1084,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  /* ── Expanded Controls ── */
+  /* â”€â”€ Expanded Controls â”€â”€ */
   expandedControls: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1451,7 +1123,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
   },
 
-  /* ── Status ── */
+  /* â”€â”€ Status â”€â”€ */
   expandedStatus: {
     color: '#555',
     fontSize: 12,
