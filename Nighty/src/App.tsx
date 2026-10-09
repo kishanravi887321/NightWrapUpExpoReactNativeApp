@@ -123,7 +123,10 @@ export default function App() {
     }
 
     const sharedText = shareIntent.webUrl ?? shareIntent.text ?? '';
-    const youtubeUrl = sharedText.match(/https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com\/\S+|youtu\.be\/\S+)/i)?.[0];
+    const matchedUrl = sharedText.match(
+      /https?:\/\/(?:www\.|m\.|music\.)?(?:youtube\.com\/\S+|youtu\.be\/\S+)/i,
+    )?.[0];
+    const youtubeUrl = matchedUrl?.replace(/[.,!?;:)]+$/, '');
     if (youtubeUrl) {
       setSharedYoutubeUrl(youtubeUrl);
     } else {

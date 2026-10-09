@@ -93,9 +93,8 @@ export function LibraryScreen({
   });
 
   React.useEffect(() => {
-    if (!sharedYoutubeUrl) {
-      setShareSelectedLibraryId(null);
-    }
+    setShareSelectedLibraryId(null);
+    setIsCreateLibraryVisible(false);
   }, [sharedYoutubeUrl]);
 
   return (
