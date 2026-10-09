@@ -217,6 +217,12 @@ export default function App() {
     await handleSongPress(selectedSongs[nextIndex]._id);
   };
 
+  useEffect(() => {
+    if (audioStatus.didJustFinish) {
+      void handleTrackChange(1);
+    }
+  }, [audioStatus.didJustFinish]);
+
   const handleLogout = async () => {
     audio.pause();
     setAudioSourceUrl(null);
