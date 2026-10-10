@@ -17,6 +17,7 @@ import { LibraryItem, SongItem } from '../types/api';
 import { formatTime } from '../utils/format';
 import { BottomSheetPlayer as ModularBottomSheetPlayer } from './BottomSheetPlayer';
 import { SongArtwork as ModularSongArtwork } from './SongArtwork';
+import { LocalDownload } from '../services/localDownloads';
 
 const MINI_HEIGHT = 64;
 
@@ -46,6 +47,10 @@ type LibraryScreenProps = {
   onDismissSharedSong: () => void;
   isCreatingLibrary: boolean;
   onCreateLibrary: (name: string, description: string) => Promise<LibraryItem>;
+  localDownloads: Record<string, LocalDownload>;
+  downloadingSongId: string | null;
+  downloadProgress: number;
+  onDownloadSong: (song: SongItem, libraryId: string, libraryName: string) => void;
 };
 
 /* â”€â”€â”€ Pull-up / Pull-down Bottom Sheet Player â”€â”€â”€ */
@@ -75,6 +80,10 @@ export function LibraryScreen({
   onDismissSharedSong,
   isCreatingLibrary,
   onCreateLibrary,
+  localDownloads,
+  downloadingSongId,
+  downloadProgress,
+  onDownloadSong,
 }: LibraryScreenProps) {
   const selectedLibrary =
     libraries.find((l) => l._id === selectedLibraryId) ?? null;
@@ -498,6 +507,30 @@ export function LibraryScreen({
                     <Text style={styles.songDur}>
                       {formatTime(song.duration)}
                     </Text>
+                    {localDownloads[song._id] ? (
+                      <Text style={styles.downloadedBadge}>Offline</Text>
+                    ) : song.audioReady ? (
+                      <Pressable
+                        style={styles.downloadButton}
+                        onPressIn={(event) => event.stopPropagation()}
+                        onPress={() => {
+                          if (selectedLibrary) {
+                            onDownloadSong(song, selectedLibrary._id, selectedLibrary.name);
+                          }
+                        }}
+                        disabled={downloadingSongId !== null}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Download ${song.title}`}
+                      >
+                        {downloadingSongId === song._id ? (
+                          <Text style={styles.downloadProgress}>
+                            {Math.round(downloadProgress * 100)}%
+                          </Text>
+                        ) : (
+                          <Text style={styles.downloadIcon}>↓</Text>
+                        )}
+                      </Pressable>
+                    ) : null}
                   </View>
                 </Pressable>
               );
@@ -994,6 +1027,29 @@ const styles = StyleSheet.create({
     color: '#666',
     fontSize: 12,
     fontWeight: '600',
+  },
+  downloadedBadge: {
+    color: '#1db954',
+    fontSize: 10,
+    fontWeight: '700',
+    marginTop: 3,
+  },
+  downloadButton: {
+    alignItems: 'center',
+    height: 28,
+    justifyContent: 'center',
+    marginTop: 2,
+    width: 28,
+  },
+  downloadIcon: {
+    color: '#aaa',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  downloadProgress: {
+    color: '#1db954',
+    fontSize: 10,
+    fontWeight: '700',
   },
 
   /* â”€â”€ Empty â”€â”€ */
