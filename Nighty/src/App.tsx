@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View } from 'react-native';
+import { Alert, View } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useShareIntent } from 'expo-share-intent';
 import { BottomNavigation, AppTab } from './components/BottomNavigation';
@@ -7,6 +7,7 @@ import { LoginScreen } from './components/LoginScreen';
 import { LibraryScreen } from './components/LibraryScreen';
 import { OfflineScreen } from './components/OfflineScreen';
 import { SettingsScreen } from './components/SettingsScreen';
+import { TracksScreen } from './components/TracksScreen';
 import { clearSession, createLibrary, fetchLibraries, fetchSongsForLibrary, getStoredToken, mobileLogin, saveSongToLibrary } from './services/api';
 import {
   downloadSongLocally,
@@ -17,6 +18,15 @@ import {
 } from './services/localDownloads';
 import { LibraryItem, SongItem } from './types/api';
 import { mapLibrary, mapSong } from './utils/mappers';
+import {
+  clearLocalQueues,
+  createLocalQueue,
+  deleteLocalQueue,
+  loadLocalQueues,
+  LocalQueue,
+  QueueMode,
+  updateLocalQueue,
+} from './services/localQueues';
 
 export default function App() {
   const [email, setEmail] = useState('');
@@ -38,6 +48,11 @@ export default function App() {
   const [downloadingSongId, setDownloadingSongId] = useState<string | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [playingLocalSongId, setPlayingLocalSongId] = useState<string | null>(null);
+  const [localQueues, setLocalQueues] = useState<LocalQueue[]>([]);
+  const [queueTracks, setQueueTracks] = useState<SongItem[]>([]);
+  const [queueIndex, setQueueIndex] = useState(-1);
+  const [isQueuePlaying, setIsQueuePlaying] = useState(false);
+  const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
   const audio = useAudioPlayer(null, { updateInterval: 500 });
   const audioStatus = useAudioPlayerStatus(audio);
@@ -54,6 +69,7 @@ export default function App() {
   const currentTime = audioStatus.currentTime ?? 0;
   const totalDuration = audioStatus.duration > 0 ? audioStatus.duration : activeTrack?.duration ?? 0;
   const trackNumber = Math.max(0, selectedSongs.findIndex((song) => song._id === activeTrack?._id) + 1);
+  const queueActiveTrack = queueTracks[queueIndex] ?? null;
 
   const loadSongsForLibrary = async (libraryId: string): Promise<SongItem[]> => {
     const songs = await fetchSongsForLibrary(libraryId);
@@ -90,6 +106,16 @@ export default function App() {
     }
   };
 
+  const libraryBySongId = useMemo(() => {
+    const result: Record<string, string> = {};
+    libraries.forEach((library) => {
+      (songsByLibrary[library._id] ?? []).forEach((song) => {
+        result[song._id] = library._id;
+      });
+    });
+    return result;
+  }, [libraries, songsByLibrary]);
+
   const loadLibraries = async (preferredLibraryId?: string | null) => {
     try {
       setIsLoading(true);
@@ -103,6 +129,11 @@ export default function App() {
           mappedLibraries.find((library) => library._id === preferredLibraryId) ?? mappedLibraries[0];
         setSelectedLibraryId(libraryToSelect._id);
         const songs = await loadSongsForLibrary(libraryToSelect._id);
+        await Promise.all(
+          mappedLibraries
+            .filter((library) => library._id !== libraryToSelect._id)
+            .map((library) => loadSongsForLibrary(library._id)),
+        );
         setActiveSongId(songs[0]?._id ?? null);
       }
     } catch (loadError) {
@@ -157,6 +188,7 @@ export default function App() {
         setError(loadError instanceof Error ? loadError.message : 'Could not load offline songs.');
       });
     void restoreSession();
+    void loadLocalQueues().then(setLocalQueues);
     void setAudioModeAsync({
       playsInSilentMode: true,
       shouldPlayInBackground: true,
@@ -236,6 +268,79 @@ export default function App() {
     } catch (playbackError) {
       setIsPlaying(false);
       setError(playbackError instanceof Error ? `Playback failed: ${playbackError.message}` : 'Playback failed.');
+    }
+  };
+
+  const playQueueTrack = (tracks: SongItem[], index: number) => {
+    const track = tracks[index];
+    if (!track?.audioUrl) {
+      setError('This track is not available for playback.');
+      return;
+    }
+    setQueueTracks(tracks);
+    setQueueIndex(index);
+    setIsQueuePlaying(true);
+    try {
+      setError('');
+      audio.replace(track.audioUrl);
+      audio.setActiveForLockScreen(true, {
+        title: track.title,
+        artist: track.artist,
+        artworkUrl: track.thumbnail,
+      });
+      setAudioSourceUrl(track.audioUrl);
+      setPlayingLocalSongId(localDownloads[track._id]?.localUri === track.audioUrl ? track._id : null);
+      audio.play();
+      setIsPlaying(true);
+    } catch (playbackError) {
+      setIsPlaying(false);
+      setError(playbackError instanceof Error ? playbackError.message : 'Track playback failed.');
+    }
+  };
+
+  const handlePlayQueue = (queue: LocalQueue) => {
+    const tracks = queue.tracks.map((track) => ({
+      _id: track.songId,
+      title: track.title,
+      artist: track.artist,
+      duration: track.duration,
+      thumbnail: track.thumbnail,
+      fallbackThumbnail: track.thumbnail,
+      audioUrl: queue.mode === 'online'
+        ? track.audioUrl
+        : queue.mode === 'offline'
+          ? localDownloads[track.songId]?.localUri
+          : localDownloads[track.songId]?.localUri ?? track.audioUrl,
+      tag: queue.mode,
+      mood: 'queue',
+      audioReady: Boolean(track.localUri ?? track.audioUrl),
+    }));
+    playQueueTrack(tracks, 0);
+    setActiveQueueId(queue.id);
+  };
+
+  const handleCreateQueue = async (name: string, mode: QueueMode, songs: SongItem[]) => {
+    const queue = await createLocalQueue(name, mode, songs, libraryBySongId, localDownloads);
+    setLocalQueues((current) => [queue, ...current]);
+  };
+
+  const handleQueueChange = (direction: 1 | -1) => {
+    if (queueTracks.length < 2) return;
+    const next = (queueIndex + direction + queueTracks.length) % queueTracks.length;
+    playQueueTrack(queueTracks, next);
+  };
+
+  const handleUpdateQueue = async (queue: LocalQueue) => {
+    const updatedQueue = await updateLocalQueue(queue);
+    setLocalQueues((current) => current.map((item) => item.id === queue.id ? updatedQueue : item));
+    if (activeQueueId === queue.id && !updatedQueue.tracks.some((track) => track.songId === queueTracks[queueIndex]?._id)) {
+      audio.pause();
+      setAudioSourceUrl(null);
+      setQueueTracks([]);
+      setQueueIndex(-1);
+      setIsQueuePlaying(false);
+      setActiveQueueId(null);
+      setIsPlaying(false);
     }
   };
 
@@ -334,15 +439,24 @@ export default function App() {
 
   useEffect(() => {
     if (audioStatus.didJustFinish) {
-      if (playingLocalSongId) {
+      if (isQueuePlaying && queueTracks.length > 1) {
+        handleQueueChange(1);
+      } else if (playingLocalSongId) {
         handleLocalTrackChange(1);
       } else {
         void handleTrackChange(1);
       }
     }
-  }, [audioStatus.didJustFinish, playingLocalSongId]);
+  }, [audioStatus.didJustFinish, playingLocalSongId, isQueuePlaying, queueTracks, queueIndex]);
+
+  useEffect(() => {
+    if (audioStatus.error && isQueuePlaying && queueTracks.length > 1) {
+      handleQueueChange(1);
+    }
+  }, [audioStatus.error, isQueuePlaying, queueTracks, queueIndex]);
 
   const handleLogout = async () => {
+    // The logout confirmation is rendered before this action is called.
     audio.pause();
     audio.setActiveForLockScreen(false);
     setAudioSourceUrl(null);
@@ -352,7 +466,27 @@ export default function App() {
     setSelectedLibraryId(null);
     setActiveSongId(null);
     setIsAuthenticated(false);
+    await clearLocalQueues();
+    setLocalQueues([]);
+    setQueueTracks([]);
+    setQueueIndex(-1);
+    setIsQueuePlaying(false);
     setError('');
+  };
+
+  const confirmLogout = () => {
+    if (localQueues.length === 0) {
+      void handleLogout();
+      return;
+    }
+    Alert.alert(
+      'Sign out and remove tracks?',
+      'Your locally saved tracks will be removed from this device when you sign out. Downloaded songs will remain available offline.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign out', style: 'destructive', onPress: () => void handleLogout() },
+      ],
+    );
   };
 
   const handleRefresh = async () => {
@@ -469,7 +603,7 @@ export default function App() {
           trackNumber={trackNumber}
           trackCount={selectedSongs.length}
           onSeek={(seconds) => void handleSeek(seconds)}
-          onLogout={() => void handleLogout()}
+          onLogout={confirmLogout}
           onTogglePlay={() => void handleTogglePlay()}
           onRefresh={() => void handleRefresh()}
           isPlaying={isPlaying}
@@ -486,6 +620,45 @@ export default function App() {
             void handleDownloadSong(song, libraryId, libraryName)
           }
         />
+      ) : activeTab === 'tracks' ? (
+        <TracksScreen
+          queues={localQueues}
+          libraries={libraries}
+          songsByLibrary={songsByLibrary}
+          downloads={localDownloads}
+          onCreateQueue={(name, mode, songs) => void handleCreateQueue(name, mode, songs)}
+          onDeleteQueue={(queueId) => {
+            if (activeQueueId === queueId) {
+              audio.pause();
+              setAudioSourceUrl(null);
+              setQueueTracks([]);
+              setQueueIndex(-1);
+              setIsQueuePlaying(false);
+              setActiveQueueId(null);
+              setIsPlaying(false);
+            }
+            setLocalQueues((current) => current.filter((queue) => queue.id !== queueId));
+            void deleteLocalQueue(queueId);
+          }}
+          onUpdateQueue={(queue) => void handleUpdateQueue(queue)}
+          onPlayQueue={handlePlayQueue}
+          activeTrack={queueActiveTrack}
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          onTogglePlay={() => {
+            if (!queueActiveTrack) return;
+            if (audioSourceUrl !== queueActiveTrack.audioUrl || !audioStatus.isLoaded) {
+              playQueueTrack(queueTracks, queueIndex);
+            } else if (audioStatus.playing) {
+              audio.pause();
+            } else {
+              audio.play();
+            }
+          }}
+          onPrevious={() => handleQueueChange(-1)}
+          onNext={() => handleQueueChange(1)}
+          onSeek={(seconds) => void handleSeek(seconds)}
+        />
       ) : activeTab === 'offline' ? (
         <OfflineScreen
           downloads={localDownloads}
@@ -500,11 +673,10 @@ export default function App() {
           onSeek={(seconds) => void handleSeek(seconds)}
         />
       ) : (
-        <SettingsScreen onLogout={() => void handleLogout()} />
+        <SettingsScreen onLogout={confirmLogout} />
       )}
       <BottomNavigation
         activeTab={activeTab}
-        offlineCount={Object.keys(localDownloads).length}
         onChange={setActiveTab}
       />
     </View>
