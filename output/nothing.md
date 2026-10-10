@@ -14,7 +14,7 @@ The previous version included:
 - Previous, play/pause, and next controls
 - Automatic advance to the next song
 - Library switching
-- Play-count updates through the backend
+- Backend play-count updates were used by the earlier version
 - Basic now-playing screen and bottom player
 
 Limitations:
@@ -166,3 +166,34 @@ When app code or native configuration changes, create and share a new APK. For a
 cd Nighty
 npx eas build --profile preview --platform android
 ```
+
+## Latest update - Version 05
+
+Version 05 adds local song downloads while preserving online playback and the existing backend API.
+
+Changes:
+
+- Added bottom navigation for:
+  - Libraries
+  - Offline
+  - Settings
+- Added a download action to ready songs in the library.
+- Downloads use the existing Cloudinary audio URL and are stored in the app's private device storage.
+- Added download progress and an `Offline` status on downloaded songs.
+- Added an Offline screen listing songs saved on the current device.
+- Each local download stores its library ID and library name, so the downloaded song remains associated with the library where it was saved.
+- Playback now prefers a valid local file and falls back to the Cloudinary URL when the song is not downloaded.
+- When a song is selected from a library or reached through the queue, the audio path is resolved as `local file path -> Cloudinary URL`.
+- Automatic next-song playback supports mixed queues containing both local and online songs.
+- Existing login, library, YouTube sharing, library creation, background playback, and lock-screen APIs remain unchanged.
+- The mobile app no longer sends play-count update requests when a song starts.
+- Local download metadata is cleaned when a saved file no longer exists.
+
+Version 05 requires a new native APK because it adds `expo-file-system`:
+
+```powershell
+cd Nighty
+npx eas build --profile preview --platform android
+```
+
+Downloaded songs are device-specific. They are removed when the app is uninstalled and are not synchronized to another phone.

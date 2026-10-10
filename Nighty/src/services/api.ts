@@ -163,8 +163,3 @@ export const saveSongToLibrary = async (libraryId: string, youtubeUrl: string): 
     method: 'PUT',
     body: JSON.stringify({ youtubeUrl: youtubeUrl.trim() }),
   });
-
-export const markSongPlayed = async (libraryId: string, songId: string) =>
-  requestWithAuth<{ success: boolean }>(`/libraries/${encodeURIComponent(libraryId)}/songs/${encodeURIComponent(songId)}/play`, {
-    method: 'POST',
-  });

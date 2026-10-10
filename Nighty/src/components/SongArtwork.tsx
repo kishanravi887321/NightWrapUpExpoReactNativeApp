@@ -8,11 +8,17 @@ type SongArtworkProps = {
 };
 
 export function SongArtwork({ uri, fallbackUri, style }: SongArtworkProps) {
-  const [imageUri, setImageUri] = useState(uri);
+  const safeUri = uri?.trim();
+  const safeFallbackUri = fallbackUri?.trim();
+  const [imageUri, setImageUri] = useState(safeUri || safeFallbackUri || null);
 
   useEffect(() => {
-    setImageUri(uri);
-  }, [uri]);
+    setImageUri(safeUri || safeFallbackUri || null);
+  }, [safeFallbackUri, safeUri]);
+
+  if (!imageUri) {
+    return <Image source={require('../../assets/icon.png')} style={style} resizeMode="cover" />;
+  }
 
   return (
     <Image
@@ -20,8 +26,10 @@ export function SongArtwork({ uri, fallbackUri, style }: SongArtworkProps) {
       style={style}
       resizeMode="cover"
       onError={() => {
-        if (imageUri !== fallbackUri) {
-          setImageUri(fallbackUri);
+        if (safeFallbackUri && imageUri !== safeFallbackUri) {
+          setImageUri(safeFallbackUri);
+        } else {
+          setImageUri(null);
         }
       }}
     />
