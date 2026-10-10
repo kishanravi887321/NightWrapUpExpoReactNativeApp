@@ -1,9 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { View } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useShareIntent } from 'expo-share-intent';
+import { BottomNavigation, AppTab } from './components/BottomNavigation';
 import { LoginScreen } from './components/LoginScreen';
 import { LibraryScreen } from './components/LibraryScreen';
-import { clearSession, createLibrary, fetchLibraries, fetchSongsForLibrary, getStoredToken, markSongPlayed, mobileLogin, saveSongToLibrary } from './services/api';
+import { OfflineScreen } from './components/OfflineScreen';
+import { SettingsScreen } from './components/SettingsScreen';
+import { clearSession, createLibrary, fetchLibraries, fetchSongsForLibrary, getStoredToken, mobileLogin, saveSongToLibrary } from './services/api';
+import {
+  downloadSongLocally,
+  getPlayableUri,
+  loadLocalDownloads,
+  LocalDownload,
+  removeLocalDownload,
+} from './services/localDownloads';
 import { LibraryItem, SongItem } from './types/api';
 import { mapLibrary, mapSong } from './utils/mappers';
 
@@ -22,6 +33,11 @@ export default function App() {
   const [sharedYoutubeUrl, setSharedYoutubeUrl] = useState<string | null>(null);
   const [isSavingSharedSong, setIsSavingSharedSong] = useState(false);
   const [isCreatingLibrary, setIsCreatingLibrary] = useState(false);
+  const [activeTab, setActiveTab] = useState<AppTab>('libraries');
+  const [localDownloads, setLocalDownloads] = useState<Record<string, LocalDownload>>({});
+  const [downloadingSongId, setDownloadingSongId] = useState<string | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [playingLocalSongId, setPlayingLocalSongId] = useState<string | null>(null);
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
   const audio = useAudioPlayer(null, { updateInterval: 500 });
   const audioStatus = useAudioPlayerStatus(audio);
@@ -44,6 +60,34 @@ export default function App() {
     const mapped = songs.map(mapSong);
     setSongsByLibrary((current) => ({ ...current, [libraryId]: mapped }));
     return mapped;
+  };
+
+  const handleDownloadSong = async (
+    song: SongItem,
+    libraryId: string,
+    libraryName: string,
+  ) => {
+    if (downloadingSongId || localDownloads[song._id]) {
+      return;
+    }
+
+    try {
+      setDownloadingSongId(song._id);
+      setDownloadProgress(0);
+      setError('');
+      const download = await downloadSongLocally(
+        song,
+        libraryId,
+        libraryName,
+        setDownloadProgress,
+      );
+      setLocalDownloads((current) => ({ ...current, [song._id]: download }));
+    } catch (downloadError) {
+      setError(downloadError instanceof Error ? downloadError.message : 'Could not download the song.');
+    } finally {
+      setDownloadingSongId(null);
+      setDownloadProgress(0);
+    }
   };
 
   const loadLibraries = async (preferredLibraryId?: string | null) => {
@@ -107,6 +151,11 @@ export default function App() {
   };
 
   useEffect(() => {
+    void loadLocalDownloads()
+      .then(setLocalDownloads)
+      .catch((loadError) => {
+        setError(loadError instanceof Error ? loadError.message : 'Could not load offline songs.');
+      });
     void restoreSession();
     void setAudioModeAsync({
       playsInSilentMode: true,
@@ -128,6 +177,7 @@ export default function App() {
     )?.[0];
     const youtubeUrl = matchedUrl?.replace(/[.,!?;:)]+$/, '');
     if (youtubeUrl) {
+      setActiveTab('libraries');
       setSharedYoutubeUrl(youtubeUrl);
     } else {
       setError('Please share a YouTube video link.');
@@ -139,6 +189,7 @@ export default function App() {
     setIsPlaying(audioStatus.playing);
     if (audioStatus.didJustFinish) {
       setIsPlaying(false);
+      setPlayingLocalSongId(null);
     }
   }, [audioStatus.playing, audioStatus.didJustFinish]);
 
@@ -163,7 +214,8 @@ export default function App() {
   };
 
   const playTrack = async (track: SongItem) => {
-    if (!track.audioUrl) {
+    const playableUri = getPlayableUri(track, localDownloads);
+    if (!playableUri) {
       setIsPlaying(false);
       setError('This song is not ready for playback yet.');
       return;
@@ -171,18 +223,89 @@ export default function App() {
 
     try {
       setError('');
-      audio.replace(track.audioUrl);
+      audio.replace(playableUri);
+      setPlayingLocalSongId(localDownloads[track._id]?.localUri === playableUri ? track._id : null);
       audio.setActiveForLockScreen(true, {
         title: track.title,
         artist: track.artist,
         artworkUrl: track.thumbnail,
       });
-      setAudioSourceUrl(track.audioUrl);
+      setAudioSourceUrl(playableUri);
       audio.play();
       setIsPlaying(true);
     } catch (playbackError) {
       setIsPlaying(false);
       setError(playbackError instanceof Error ? `Playback failed: ${playbackError.message}` : 'Playback failed.');
+    }
+  };
+
+  const handlePlayLocalSong = (download: LocalDownload) => {
+    try {
+      audio.replace(download.localUri);
+      audio.setActiveForLockScreen(true, {
+        title: download.title,
+        artist: download.artist,
+      });
+      setAudioSourceUrl(download.localUri);
+      setPlayingLocalSongId(download.songId);
+      setError('');
+      audio.play();
+      setIsPlaying(true);
+    } catch (playbackError) {
+      setPlayingLocalSongId(null);
+      setIsPlaying(false);
+      setError(
+        playbackError instanceof Error
+          ? `Offline playback failed: ${playbackError.message}`
+          : 'Offline playback failed.',
+      );
+    }
+  };
+
+  const handleToggleLocalPlay = () => {
+    if (!playingLocalSongId) {
+      return;
+    }
+    if (audioSourceUrl !== localDownloads[playingLocalSongId]?.localUri || !audioStatus.isLoaded) {
+      const download = localDownloads[playingLocalSongId];
+      if (download) {
+        handlePlayLocalSong(download);
+      }
+      return;
+    }
+    if (audioStatus.playing) {
+      audio.pause();
+    } else {
+      audio.play();
+    }
+  };
+
+  const handleLocalTrackChange = (direction: 1 | -1) => {
+    const downloads = Object.values(localDownloads);
+    const currentIndex = downloads.findIndex((song) => song.songId === playingLocalSongId);
+    if (currentIndex < 0 || downloads.length < 2) {
+      return;
+    }
+    const nextIndex = (currentIndex + direction + downloads.length) % downloads.length;
+    handlePlayLocalSong(downloads[nextIndex]);
+  };
+
+  const handleRemoveLocalSong = async (songId: string) => {
+    try {
+      await removeLocalDownload(songId);
+      if (playingLocalSongId === songId) {
+        audio.pause();
+        setAudioSourceUrl(null);
+        setPlayingLocalSongId(null);
+        setIsPlaying(false);
+      }
+      setLocalDownloads((current) => {
+        const next = { ...current };
+        delete next[songId];
+        return next;
+      });
+    } catch (removeError) {
+      setError(removeError instanceof Error ? removeError.message : 'Could not remove the local song.');
     }
   };
 
@@ -197,17 +320,6 @@ export default function App() {
       await playTrack(selectedSong);
     }
 
-    try {
-      await markSongPlayed(selectedLibraryId, songId);
-      setSongsByLibrary((current) => ({
-        ...current,
-        [selectedLibraryId]: (current[selectedLibraryId] ?? []).map((song) =>
-          song._id === songId ? { ...song, playCount: (song.playCount ?? 0) + 1 } : song,
-        ),
-      }));
-    } catch (playError) {
-      setError(playError instanceof Error ? playError.message : 'Play count update failed.');
-    }
   };
 
   const handleTrackChange = async (direction: 1 | -1) => {
@@ -222,9 +334,13 @@ export default function App() {
 
   useEffect(() => {
     if (audioStatus.didJustFinish) {
-      void handleTrackChange(1);
+      if (playingLocalSongId) {
+        handleLocalTrackChange(1);
+      } else {
+        void handleTrackChange(1);
+      }
     }
-  }, [audioStatus.didJustFinish]);
+  }, [audioStatus.didJustFinish, playingLocalSongId]);
 
   const handleLogout = async () => {
     audio.pause();
@@ -288,7 +404,7 @@ export default function App() {
   };
 
   const handleTogglePlay = async () => {
-    if (!activeTrack?.audioUrl) {
+    if (!activeTrack || !getPlayableUri(activeTrack, localDownloads)) {
       if (activeTrack) {
         await playTrack(activeTrack);
       }
@@ -296,7 +412,8 @@ export default function App() {
     }
 
     try {
-      if (audioSourceUrl !== activeTrack.audioUrl || !audioStatus.isLoaded) {
+      const playableUri = getPlayableUri(activeTrack, localDownloads);
+      if (audioSourceUrl !== playableUri || !audioStatus.isLoaded) {
         await playTrack(activeTrack);
         return;
       }
@@ -334,32 +451,62 @@ export default function App() {
   }
 
   return (
-    <LibraryScreen
-      libraries={libraries}
-      selectedLibraryId={selectedLibraryId}
-      selectedSongs={selectedSongs}
-      activeTrack={activeTrack}
-      isLoading={isLoading}
-      error={error}
-      onLibraryChange={(id) => void handleLibraryChange(id)}
-      onSongPress={(id) => void handleSongPress(id)}
-      onPrevious={() => void handleTrackChange(-1)}
-      onNext={() => void handleTrackChange(1)}
-      currentTime={currentTime}
-      totalDuration={totalDuration}
-      trackNumber={trackNumber}
-      trackCount={selectedSongs.length}
-      onSeek={(seconds) => void handleSeek(seconds)}
-      onLogout={() => void handleLogout()}
-      onTogglePlay={() => void handleTogglePlay()}
-      onRefresh={() => void handleRefresh()}
-      isPlaying={isPlaying}
-      sharedYoutubeUrl={sharedYoutubeUrl}
-      isSavingSharedSong={isSavingSharedSong}
-      onSaveSharedSong={(libraryId) => void handleSaveSharedSong(libraryId)}
-      onDismissSharedSong={dismissSharedSong}
-      isCreatingLibrary={isCreatingLibrary}
-      onCreateLibrary={(name, description) => handleCreateLibrary(name, description)}
-    />
+    <View style={{ flex: 1, backgroundColor: '#121212' }}>
+      {activeTab === 'libraries' ? (
+        <LibraryScreen
+          libraries={libraries}
+          selectedLibraryId={selectedLibraryId}
+          selectedSongs={selectedSongs}
+          activeTrack={activeTrack}
+          isLoading={isLoading}
+          error={error}
+          onLibraryChange={(id) => void handleLibraryChange(id)}
+          onSongPress={(id) => void handleSongPress(id)}
+          onPrevious={() => void handleTrackChange(-1)}
+          onNext={() => void handleTrackChange(1)}
+          currentTime={currentTime}
+          totalDuration={totalDuration}
+          trackNumber={trackNumber}
+          trackCount={selectedSongs.length}
+          onSeek={(seconds) => void handleSeek(seconds)}
+          onLogout={() => void handleLogout()}
+          onTogglePlay={() => void handleTogglePlay()}
+          onRefresh={() => void handleRefresh()}
+          isPlaying={isPlaying}
+          sharedYoutubeUrl={sharedYoutubeUrl}
+          isSavingSharedSong={isSavingSharedSong}
+          onSaveSharedSong={(libraryId) => void handleSaveSharedSong(libraryId)}
+          onDismissSharedSong={dismissSharedSong}
+          isCreatingLibrary={isCreatingLibrary}
+          onCreateLibrary={(name, description) => handleCreateLibrary(name, description)}
+          localDownloads={localDownloads}
+          downloadingSongId={downloadingSongId}
+          downloadProgress={downloadProgress}
+          onDownloadSong={(song, libraryId, libraryName) =>
+            void handleDownloadSong(song, libraryId, libraryName)
+          }
+        />
+      ) : activeTab === 'offline' ? (
+        <OfflineScreen
+          downloads={localDownloads}
+          playingSongId={playingLocalSongId}
+          onPlay={handlePlayLocalSong}
+          onRemove={(songId) => void handleRemoveLocalSong(songId)}
+          isPlaying={isPlaying}
+          currentTime={currentTime}
+          onTogglePlay={handleToggleLocalPlay}
+          onPrevious={() => handleLocalTrackChange(-1)}
+          onNext={() => handleLocalTrackChange(1)}
+          onSeek={(seconds) => void handleSeek(seconds)}
+        />
+      ) : (
+        <SettingsScreen onLogout={() => void handleLogout()} />
+      )}
+      <BottomNavigation
+        activeTab={activeTab}
+        offlineCount={Object.keys(localDownloads).length}
+        onChange={setActiveTab}
+      />
+    </View>
   );
 }
