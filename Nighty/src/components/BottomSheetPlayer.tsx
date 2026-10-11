@@ -158,7 +158,7 @@ export function BottomSheetPlayer({
           <Pressable style={styles.exBtnPlay} onPress={onTogglePlay}><Text style={styles.exBtnPlayText}>{isPlaying ? '⏸' : '▶'}</Text></Pressable>
           <Pressable style={styles.exBtn} onPress={onNext}><Text style={styles.exBtnText}>⏭</Text></Pressable>
         </View>
-        <Text style={styles.expandedStatus}>{isPlaying ? '♫ Playing' : '⏸ Paused'} · {activeTrack.audioReady ? 'Stream ready' : 'Queued'}</Text>
+        <Text style={styles.expandedStatus}>{isPlaying ? '♫ Playing' : '⏸ Paused'} · {activeTrack.audioReady ? 'Stream ready' : 'Pending'}</Text>
       </Animated.View>
     </Animated.View>
   );

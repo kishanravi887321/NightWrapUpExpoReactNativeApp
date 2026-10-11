@@ -271,25 +271,40 @@ export default function App() {
     }
   };
 
-  const playQueueTrack = (tracks: SongItem[], index: number) => {
+  const playQueueTrack = (tracks: SongItem[], index: number, _localDownloads = localDownloads) => {
     const track = tracks[index];
-    if (!track?.audioUrl) {
-      setError('This track is not available for playback.');
+    if (!track) return;
+
+    // Resolve the best available URI: prefer a locally downloaded file, fall back to online URL.
+    const localUri = _localDownloads[track._id]?.localUri;
+    const playableUri = localUri ?? track.audioUrl ?? null;
+
+    if (!playableUri) {
+      // No URI available for this track — skip to the next one automatically.
+      if (tracks.length > 1) {
+        const nextIndex = (index + 1) % tracks.length;
+        if (nextIndex !== index) {
+          playQueueTrack(tracks, nextIndex, _localDownloads);
+          return;
+        }
+      }
+      setError('No tracks in this queue are playable right now.');
       return;
     }
+
     setQueueTracks(tracks);
     setQueueIndex(index);
     setIsQueuePlaying(true);
     try {
       setError('');
-      audio.replace(track.audioUrl);
+      audio.replace(playableUri);
       audio.setActiveForLockScreen(true, {
         title: track.title,
         artist: track.artist,
         artworkUrl: track.thumbnail,
       });
-      setAudioSourceUrl(track.audioUrl);
-      setPlayingLocalSongId(localDownloads[track._id]?.localUri === track.audioUrl ? track._id : null);
+      setAudioSourceUrl(playableUri);
+      setPlayingLocalSongId(localUri ? track._id : null);
       audio.play();
       setIsPlaying(true);
     } catch (playbackError) {
@@ -299,6 +314,9 @@ export default function App() {
   };
 
   const handlePlayQueue = (queue: LocalQueue) => {
+    // Build SongItem list from the saved queue tracks.
+    // playQueueTrack will resolve the actual URI at play time using localDownloads,
+    // so we expose both audioUrl (online) and the download map is consulted live.
     const tracks = queue.tracks.map((track) => ({
       _id: track.songId,
       title: track.title,
@@ -306,11 +324,9 @@ export default function App() {
       duration: track.duration,
       thumbnail: track.thumbnail,
       fallbackThumbnail: track.thumbnail,
-      audioUrl: queue.mode === 'online'
-        ? track.audioUrl
-        : queue.mode === 'offline'
-          ? localDownloads[track.songId]?.localUri
-          : localDownloads[track.songId]?.localUri ?? track.audioUrl,
+      // For online-only mode always use the remote URL; for offline/mixed let
+      // playQueueTrack decide based on what is downloaded.
+      audioUrl: queue.mode === 'online' ? track.audioUrl : (track.audioUrl ?? undefined),
       tag: queue.mode,
       mood: 'queue',
       audioReady: Boolean(track.localUri ?? track.audioUrl),
@@ -440,20 +456,25 @@ export default function App() {
   useEffect(() => {
     if (audioStatus.didJustFinish) {
       if (isQueuePlaying && queueTracks.length > 1) {
-        handleQueueChange(1);
+        const next = (queueIndex + 1 + queueTracks.length) % queueTracks.length;
+        playQueueTrack(queueTracks, next);
       } else if (playingLocalSongId) {
         handleLocalTrackChange(1);
       } else {
         void handleTrackChange(1);
       }
     }
-  }, [audioStatus.didJustFinish, playingLocalSongId, isQueuePlaying, queueTracks, queueIndex]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioStatus.didJustFinish]);
 
   useEffect(() => {
+    // When a queue track fails to load (e.g. online song with no internet), skip to next.
     if (audioStatus.error && isQueuePlaying && queueTracks.length > 1) {
-      handleQueueChange(1);
+      const next = (queueIndex + 1 + queueTracks.length) % queueTracks.length;
+      playQueueTrack(queueTracks, next);
     }
-  }, [audioStatus.error, isQueuePlaying, queueTracks, queueIndex]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioStatus.error]);
 
   const handleLogout = async () => {
     // The logout confirmation is rendered before this action is called.
@@ -647,7 +668,10 @@ export default function App() {
           currentTime={currentTime}
           onTogglePlay={() => {
             if (!queueActiveTrack) return;
-            if (audioSourceUrl !== queueActiveTrack.audioUrl || !audioStatus.isLoaded) {
+            // Resolve what URI we expect to be playing for this queue track.
+            const expectedUri =
+              localDownloads[queueActiveTrack._id]?.localUri ?? queueActiveTrack.audioUrl ?? null;
+            if (audioSourceUrl !== expectedUri || !audioStatus.isLoaded) {
               playQueueTrack(queueTracks, queueIndex);
             } else if (audioStatus.playing) {
               audio.pause();
@@ -655,8 +679,16 @@ export default function App() {
               audio.play();
             }
           }}
-          onPrevious={() => handleQueueChange(-1)}
-          onNext={() => handleQueueChange(1)}
+          onPrevious={() => {
+            if (queueTracks.length < 2) return;
+            const prev = (queueIndex - 1 + queueTracks.length) % queueTracks.length;
+            playQueueTrack(queueTracks, prev);
+          }}
+          onNext={() => {
+            if (queueTracks.length < 2) return;
+            const next = (queueIndex + 1 + queueTracks.length) % queueTracks.length;
+            playQueueTrack(queueTracks, next);
+          }}
           onSeek={(seconds) => void handleSeek(seconds)}
         />
       ) : activeTab === 'offline' ? (

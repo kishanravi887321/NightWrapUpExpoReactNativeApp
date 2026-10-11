@@ -501,14 +501,24 @@ export function LibraryScreen({
                   <View style={styles.songRight}>
                     {!song.audioReady && (
                       <View style={styles.queuedBadge}>
-                        <Text style={styles.queuedText}>queued</Text>
+                        <Text
+                          style={styles.queuedText}
+                          accessibilityLabel="Pending audio"
+                        >
+                          ⏳
+                        </Text>
                       </View>
                     )}
                     <Text style={styles.songDur}>
                       {formatTime(song.duration)}
                     </Text>
                     {localDownloads[song._id] ? (
-                      <Text style={styles.downloadedBadge}>Offline</Text>
+                      <Text
+                        style={styles.downloadedBadge}
+                        accessibilityLabel="Available offline"
+                      >
+                        ⇩
+                      </Text>
                     ) : song.audioReady ? (
                       <Pressable
                         style={styles.downloadButton}
@@ -527,7 +537,7 @@ export function LibraryScreen({
                             {Math.round(downloadProgress * 100)}%
                           </Text>
                         ) : (
-                          <Text style={styles.downloadIcon}>↓</Text>
+                          <Text style={styles.onlineBadge}>☁</Text>
                         )}
                       </Pressable>
                     ) : null}
@@ -1034,17 +1044,18 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 3,
   },
+  onlineBadge: {
+    color: '#aaa',
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 2,
+  },
   downloadButton: {
     alignItems: 'center',
     height: 28,
     justifyContent: 'center',
     marginTop: 2,
     width: 28,
-  },
-  downloadIcon: {
-    color: '#aaa',
-    fontSize: 20,
-    fontWeight: '700',
   },
   downloadProgress: {
     color: '#1db954',
