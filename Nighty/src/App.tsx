@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, View } from 'react-native';
 import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-audio';
 import { useShareIntent } from 'expo-share-intent';
@@ -53,9 +53,12 @@ export default function App() {
   const [queueIndex, setQueueIndex] = useState(-1);
   const [isQueuePlaying, setIsQueuePlaying] = useState(false);
   const [activeQueueId, setActiveQueueId] = useState<string | null>(null);
+  const [isRepeat, setIsRepeat] = useState(false);
+  const [isShuffle, setIsShuffle] = useState(false);
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
-  const audio = useAudioPlayer(null, { updateInterval: 500 });
+  const audio = useAudioPlayer(null, { updateInterval: 250 });
   const audioStatus = useAudioPlayerStatus(audio);
+  const userPauseIntentRef = useRef(false);
 
   const selectedLibrary = libraries.find((library) => library._id === selectedLibraryId) ?? null;
   const selectedSongs = useMemo(
@@ -218,12 +221,29 @@ export default function App() {
   }, [hasShareIntent, resetShareIntent, shareIntent.text, shareIntent.webUrl]);
 
   useEffect(() => {
+    try {
+      audio.loop = isRepeat;
+    } catch {
+      // ignore if player does not support direct loop assignment
+    }
+  }, [audio, isRepeat]);
+
+  useEffect(() => {
+    if (userPauseIntentRef.current) {
+      // User explicitly paused: do not let in-flight native status revert isPlaying back to true
+      if (!audioStatus.playing) {
+        userPauseIntentRef.current = false;
+        setIsPlaying(false);
+      }
+      return;
+    }
+
     setIsPlaying(audioStatus.playing);
-    if (audioStatus.didJustFinish) {
+    if (audioStatus.didJustFinish && !isRepeat) {
       setIsPlaying(false);
       setPlayingLocalSongId(null);
     }
-  }, [audioStatus.playing, audioStatus.didJustFinish]);
+  }, [audioStatus.playing, audioStatus.didJustFinish, isRepeat]);
 
   const handleLibraryChange = async (libraryId: string) => {
     if (libraryId === selectedLibraryId) {
@@ -255,6 +275,7 @@ export default function App() {
 
     try {
       setError('');
+      userPauseIntentRef.current = false;
       audio.replace(playableUri);
       setPlayingLocalSongId(localDownloads[track._id]?.localUri === playableUri ? track._id : null);
       audio.setActiveForLockScreen(true, {
@@ -297,6 +318,7 @@ export default function App() {
     setIsQueuePlaying(true);
     try {
       setError('');
+      userPauseIntentRef.current = false;
       audio.replace(playableUri);
       audio.setActiveForLockScreen(true, {
         title: track.title,
@@ -362,6 +384,7 @@ export default function App() {
 
   const handlePlayLocalSong = (download: LocalDownload) => {
     try {
+      userPauseIntentRef.current = false;
       audio.replace(download.localUri);
       audio.setActiveForLockScreen(true, {
         title: download.title,
@@ -394,9 +417,13 @@ export default function App() {
       }
       return;
     }
-    if (audioStatus.playing) {
+    if (audioStatus.playing || isPlaying) {
+      userPauseIntentRef.current = true;
+      setIsPlaying(false);
       audio.pause();
     } else {
+      userPauseIntentRef.current = false;
+      setIsPlaying(true);
       audio.play();
     }
   };
@@ -435,12 +462,17 @@ export default function App() {
       return;
     }
 
+    if (songId === activeSongId && activeTrack) {
+      // User tapped the currently active song -> toggle play/pause smoothly
+      await handleTogglePlay();
+      return;
+    }
+
     setActiveSongId(songId);
     const selectedSong = selectedSongs.find((song) => song._id === songId);
     if (selectedSong) {
       await playTrack(selectedSong);
     }
-
   };
 
   const handleTrackChange = async (direction: 1 | -1) => {
@@ -449,14 +481,43 @@ export default function App() {
     }
 
     const currentIndex = selectedSongs.findIndex((song) => song._id === activeTrack._id);
-    const nextIndex = (currentIndex + direction + selectedSongs.length) % selectedSongs.length;
+    let nextIndex: number;
+    if (isShuffle && direction === 1) {
+      let rand = Math.floor(Math.random() * selectedSongs.length);
+      if (rand === currentIndex && selectedSongs.length > 1) {
+        rand = (rand + 1) % selectedSongs.length;
+      }
+      nextIndex = rand;
+    } else {
+      nextIndex = (currentIndex + direction + selectedSongs.length) % selectedSongs.length;
+    }
     await handleSongPress(selectedSongs[nextIndex]._id);
   };
 
   useEffect(() => {
     if (audioStatus.didJustFinish) {
+      if (isRepeat) {
+        // Play only that particular song recursively until the user changes it or turns repeat off
+        try {
+          audio.seekTo(0);
+          audio.play();
+          setIsPlaying(true);
+        } catch {
+          if (isQueuePlaying && queueTracks.length > 0 && queueIndex >= 0) {
+            playQueueTrack(queueTracks, queueIndex);
+          } else if (playingLocalSongId && localDownloads[playingLocalSongId]) {
+            handlePlayLocalSong(localDownloads[playingLocalSongId]);
+          } else if (activeTrack) {
+            void playTrack(activeTrack);
+          }
+        }
+        return;
+      }
+
       if (isQueuePlaying && queueTracks.length > 1) {
-        const next = (queueIndex + 1 + queueTracks.length) % queueTracks.length;
+        const next = isShuffle
+          ? Math.floor(Math.random() * queueTracks.length)
+          : (queueIndex + 1 + queueTracks.length) % queueTracks.length;
         playQueueTrack(queueTracks, next);
       } else if (playingLocalSongId) {
         handleLocalTrackChange(1);
@@ -465,7 +526,7 @@ export default function App() {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioStatus.didJustFinish]);
+  }, [audioStatus.didJustFinish, isRepeat, isShuffle]);
 
   useEffect(() => {
     // When a queue track fails to load (e.g. online song with no internet), skip to next.
@@ -572,9 +633,13 @@ export default function App() {
         await playTrack(activeTrack);
         return;
       }
-      if (audioStatus.playing) {
+      if (isPlaying || audioStatus.playing) {
+        userPauseIntentRef.current = true;
+        setIsPlaying(false);
         audio.pause();
       } else {
+        userPauseIntentRef.current = false;
+        setIsPlaying(true);
         audio.play();
       }
     } catch (playbackError) {
@@ -583,11 +648,24 @@ export default function App() {
     }
   };
 
+  const isSeekingRef = useRef(false);
+  const pendingSeekSecondsRef = useRef<number | null>(null);
+
   const handleSeek = async (seconds: number) => {
+    pendingSeekSecondsRef.current = seconds;
+    if (isSeekingRef.current) return;
+    isSeekingRef.current = true;
+
     try {
-      await audio.seekTo(Math.max(0, seconds));
+      while (pendingSeekSecondsRef.current !== null) {
+        const target = pendingSeekSecondsRef.current;
+        pendingSeekSecondsRef.current = null;
+        await audio.seekTo(Math.max(0, target));
+      }
     } catch (seekError) {
       setError(seekError instanceof Error ? `Unable to seek: ${seekError.message}` : 'Unable to seek.');
+    } finally {
+      isSeekingRef.current = false;
     }
   };
 
@@ -606,7 +684,7 @@ export default function App() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#121212' }}>
+    <View style={{ flex: 1, backgroundColor: '#030914' }}>
       {activeTab === 'libraries' ? (
         <LibraryScreen
           libraries={libraries}
@@ -640,6 +718,10 @@ export default function App() {
           onDownloadSong={(song, libraryId, libraryName) =>
             void handleDownloadSong(song, libraryId, libraryName)
           }
+          isRepeat={isRepeat}
+          onToggleRepeat={() => setIsRepeat((prev) => !prev)}
+          isShuffle={isShuffle}
+          onToggleShuffle={() => setIsShuffle((prev) => !prev)}
         />
       ) : activeTab === 'tracks' ? (
         <TracksScreen
@@ -673,9 +755,13 @@ export default function App() {
               localDownloads[queueActiveTrack._id]?.localUri ?? queueActiveTrack.audioUrl ?? null;
             if (audioSourceUrl !== expectedUri || !audioStatus.isLoaded) {
               playQueueTrack(queueTracks, queueIndex);
-            } else if (audioStatus.playing) {
+            } else if (audioStatus.playing || isPlaying) {
+              userPauseIntentRef.current = true;
+              setIsPlaying(false);
               audio.pause();
             } else {
+              userPauseIntentRef.current = false;
+              setIsPlaying(true);
               audio.play();
             }
           }}
