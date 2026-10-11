@@ -17,6 +17,8 @@ import { LibraryItem, SongItem } from '../types/api';
 import { formatTime } from '../utils/format';
 import { BottomSheetPlayer as ModularBottomSheetPlayer } from './BottomSheetPlayer';
 import { SongArtwork as ModularSongArtwork } from './SongArtwork';
+import { TopMusicPlayerCard } from './TopMusicPlayerCard';
+import { RowWaveVisualizer } from './RowWaveVisualizer';
 import { LocalDownload } from '../services/localDownloads';
 
 const MINI_HEIGHT = 64;
@@ -51,9 +53,119 @@ type LibraryScreenProps = {
   downloadingSongId: string | null;
   downloadProgress: number;
   onDownloadSong: (song: SongItem, libraryId: string, libraryName: string) => void;
+  isRepeat?: boolean;
+  onToggleRepeat?: () => void;
+  isShuffle?: boolean;
+  onToggleShuffle?: () => void;
 };
 
-/* â”€â”€â”€ Pull-up / Pull-down Bottom Sheet Player â”€â”€â”€ */
+type SongRowItemProps = {
+  song: SongItem;
+  index?: number;
+  active: boolean;
+  isPlaying: boolean;
+  isDownloaded: boolean;
+  downloadProgressText: string | null;
+  canDownload: boolean;
+  isDownloadDisabled: boolean;
+  onPress: () => void;
+  onDownloadPress: () => void;
+};
+
+const SongRowItem = React.memo(function SongRowItem({
+  song,
+  index: _index,
+  active,
+  isPlaying,
+  isDownloaded,
+  downloadProgressText,
+  canDownload,
+  isDownloadDisabled,
+  onPress,
+  onDownloadPress,
+}: SongRowItemProps) {
+  return (
+    <Pressable
+      style={({ pressed }) => [
+        styles.songRow,
+        active && styles.songRowActive,
+        pressed && styles.songRowPressed,
+      ]}
+      onPress={onPress}
+    >
+      {/* Cover */}
+      <ModularSongArtwork
+        uri={song.thumbnail}
+        fallbackUri={song.fallbackThumbnail}
+        style={styles.songCover}
+      />
+
+      {/* Info */}
+      <View style={styles.songInfo}>
+        <Text
+          style={[
+            styles.songTitle,
+            active && styles.songTitleActive,
+          ]}
+          numberOfLines={1}
+        >
+          {song.title}
+        </Text>
+        <Text style={styles.songArtist} numberOfLines={1}>
+          {song.artist}
+        </Text>
+      </View>
+
+      {/* Status & Duration */}
+      <View style={styles.songRight}>
+        {active && (
+          <View style={styles.rowWaveContainer}>
+            <RowWaveVisualizer isPlaying={isPlaying} maxHeight={12} />
+          </View>
+        )}
+        {!song.audioReady && (
+          <View style={styles.queuedBadge}>
+            <Text
+              style={styles.queuedText}
+              accessibilityLabel="Pending audio"
+            >
+              ⏳
+            </Text>
+          </View>
+        )}
+        <Text style={[styles.songDur, active && styles.songDurActive]}>
+          {formatTime(song.duration)}
+        </Text>
+        {isDownloaded ? (
+          <Text
+            style={styles.downloadedBadge}
+            accessibilityLabel="Available offline"
+          >
+            ⇩
+          </Text>
+        ) : canDownload ? (
+          <Pressable
+            style={styles.downloadButton}
+            onPressIn={(event) => event.stopPropagation()}
+            onPress={onDownloadPress}
+            disabled={isDownloadDisabled}
+            accessibilityRole="button"
+            accessibilityLabel={`Download ${song.title}`}
+          >
+            {downloadProgressText ? (
+              <Text style={styles.downloadProgress}>
+                {downloadProgressText}
+              </Text>
+            ) : (
+              <Text style={styles.onlineBadge}>☁</Text>
+            )}
+          </Pressable>
+        ) : null}
+      </View>
+    </Pressable>
+  );
+});
+
 export function LibraryScreen({
   libraries,
   selectedLibraryId,
@@ -84,6 +196,10 @@ export function LibraryScreen({
   downloadingSongId,
   downloadProgress,
   onDownloadSong,
+  isRepeat,
+  onToggleRepeat,
+  isShuffle,
+  onToggleShuffle,
 }: LibraryScreenProps) {
   const selectedLibrary =
     libraries.find((l) => l._id === selectedLibraryId) ?? null;
@@ -165,7 +281,7 @@ export function LibraryScreen({
 
             {isSavingSharedSong ? (
               <View style={styles.shareSavingStatus}>
-                <ActivityIndicator color="#1db954" size="small" />
+                <ActivityIndicator color="#00e5ff" size="small" />
                 <Text style={styles.shareSavingText}>Saving song...</Text>
               </View>
             ) : (
@@ -230,7 +346,7 @@ export function LibraryScreen({
             />
             {isCreatingLibrary ? (
               <View style={styles.shareSavingStatus}>
-                <ActivityIndicator color="#1db954" size="small" />
+                <ActivityIndicator color="#00e5ff" size="small" />
                 <Text style={styles.shareSavingText}>Creating library...</Text>
               </View>
             ) : (
@@ -347,27 +463,20 @@ export function LibraryScreen({
         >
           {/* â”€â”€ Now Playing Card â”€â”€ */}
           {activeTrack ? (
-            <View style={styles.nowPlaying}>
-              <Text style={styles.npLabel}>NOW PLAYING</Text>
-              <View style={styles.npRow}>
-                <ModularSongArtwork
-                  uri={activeTrack.thumbnail}
-                  fallbackUri={activeTrack.fallbackThumbnail}
-                  style={styles.npCover}
-                />
-                <View style={styles.npMeta}>
-                  <Text style={styles.npTitle} numberOfLines={2}>
-                    {activeTrack.title}
-                  </Text>
-                  <Text style={styles.npArtist} numberOfLines={1}>
-                    {activeTrack.artist}
-                  </Text>
-                  <Text style={styles.npDuration}>
-                    {formatTime(activeTrack.duration)}
-                  </Text>
-                </View>
-              </View>
-            </View>
+            <TopMusicPlayerCard
+              activeTrack={activeTrack}
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              totalDuration={totalDuration}
+              onTogglePlay={onTogglePlay}
+              onPrevious={onPrevious}
+              onNext={onNext}
+              onSeek={onSeek}
+              isRepeat={isRepeat}
+              onToggleRepeat={onToggleRepeat}
+              isShuffle={isShuffle}
+              onToggleShuffle={onToggleShuffle}
+            />
           ) : null}
 
           {/* â”€â”€ Library Tabs â”€â”€ */}
@@ -429,9 +538,9 @@ export function LibraryScreen({
           <RefreshControl
             refreshing={isLoading}
             onRefresh={onRefresh}
-            tintColor="#1db954"
-            colors={['#1db954']}
-            progressBackgroundColor="#1a1a1a"
+            tintColor="#00e5ff"
+            colors={['#00e5ff']}
+            progressBackgroundColor="#07172b"
           />
         }
       >
@@ -448,112 +557,39 @@ export function LibraryScreen({
           <View style={styles.songList}>
             {selectedSongs.map((song, i) => {
               const active = song._id === activeTrack?._id;
+              const isDownloaded = Boolean(localDownloads[song._id]);
+              const isDownloading = downloadingSongId === song._id;
+              const progressText = isDownloading ? `${Math.round(downloadProgress * 100)}%` : null;
+
               return (
-                <Pressable
+                <SongRowItem
                   key={song._id}
-                  style={({ pressed }) => [
-                    styles.songRow,
-                    active && styles.songRowActive,
-                    pressed && styles.songRowPressed,
-                  ]}
+                  song={song}
+                  index={i}
+                  active={active}
+                  isPlaying={isPlaying}
+                  isDownloaded={isDownloaded}
+                  downloadProgressText={progressText}
+                  canDownload={song.audioReady}
+                  isDownloadDisabled={downloadingSongId !== null}
                   onPress={() => onSongPress(song._id)}
-                >
-                  {/* Track Number */}
-                  <View style={styles.songIndex}>
-                    {active && isPlaying ? (
-                      <Text style={styles.songIndexPlaying}>▶</Text>
-                    ) : (
-                      <Text
-                        style={[
-                          styles.songIndexText,
-                          active && styles.songIndexTextActive,
-                        ]}
-                      >
-                        {i + 1}
-                      </Text>
-                    )}
-                  </View>
-
-                  {/* Cover */}
-                  <ModularSongArtwork
-                    uri={song.thumbnail}
-                    fallbackUri={song.fallbackThumbnail}
-                    style={styles.songCover}
-                  />
-
-                  {/* Info */}
-                  <View style={styles.songInfo}>
-                    <Text
-                      style={[
-                        styles.songTitle,
-                        active && styles.songTitleActive,
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {song.title}
-                    </Text>
-                    <Text style={styles.songArtist} numberOfLines={1}>
-                      {song.artist}
-                    </Text>
-                  </View>
-
-                  {/* Status & Duration */}
-                  <View style={styles.songRight}>
-                    {!song.audioReady && (
-                      <View style={styles.queuedBadge}>
-                        <Text
-                          style={styles.queuedText}
-                          accessibilityLabel="Pending audio"
-                        >
-                          ⏳
-                        </Text>
-                      </View>
-                    )}
-                    <Text style={styles.songDur}>
-                      {formatTime(song.duration)}
-                    </Text>
-                    {localDownloads[song._id] ? (
-                      <Text
-                        style={styles.downloadedBadge}
-                        accessibilityLabel="Available offline"
-                      >
-                        ⇩
-                      </Text>
-                    ) : song.audioReady ? (
-                      <Pressable
-                        style={styles.downloadButton}
-                        onPressIn={(event) => event.stopPropagation()}
-                        onPress={() => {
-                          if (selectedLibrary) {
-                            onDownloadSong(song, selectedLibrary._id, selectedLibrary.name);
-                          }
-                        }}
-                        disabled={downloadingSongId !== null}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Download ${song.title}`}
-                      >
-                        {downloadingSongId === song._id ? (
-                          <Text style={styles.downloadProgress}>
-                            {Math.round(downloadProgress * 100)}%
-                          </Text>
-                        ) : (
-                          <Text style={styles.onlineBadge}>☁</Text>
-                        )}
-                      </Pressable>
-                    ) : null}
-                  </View>
-                </Pressable>
+                  onDownloadPress={() => {
+                    if (selectedLibrary) {
+                      onDownloadSong(song, selectedLibrary._id, selectedLibrary.name);
+                    }
+                  }}
+                />
               );
             })}
           </View>
         )}
 
-        {/* Bottom spacing for the sheet */}
-        <View style={{ height: MINI_HEIGHT + 20 }} />
+        {/* Bottom spacing for the bottom player */}
+        <View style={{ height: MINI_HEIGHT + 24 }} />
         </Animated.ScrollView>
       </View>
 
-      {/* â”€â”€ Pull-up/Pull-down Bottom Sheet Player â”€â”€ */}
+      {/* ── Bottom Sheet Player for jumping in song & next song ── */}
       {activeTrack ? (
         <ModularBottomSheetPlayer
           activeTrack={activeTrack}
@@ -575,47 +611,52 @@ export function LibraryScreen({
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#121212',
+    backgroundColor: '#030914',
+    position: 'relative',
   },
   shareModalBackdrop: {
     flex: 1,
     justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    backgroundColor: 'rgba(1, 6, 14, 0.75)',
   },
   shareModalCard: {
     maxHeight: '80%',
-    backgroundColor: '#181818',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    backgroundColor: '#051120',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingHorizontal: 20,
     paddingTop: 24,
     paddingBottom: 28,
+    borderTopWidth: 1.5,
+    borderTopColor: 'rgba(0, 229, 255, 0.25)',
   },
   shareModalTitle: {
     color: '#fff',
     fontSize: 22,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   shareModalDescription: {
-    color: '#bbb',
-    fontSize: 15,
-    marginTop: 12,
+    color: '#7b95b0',
+    fontSize: 14,
+    marginTop: 8,
   },
   createLibraryInput: {
     color: '#fff',
-    backgroundColor: '#252525',
+    backgroundColor: '#07172b',
     borderRadius: 12,
-    fontSize: 16,
+    fontSize: 15,
     marginTop: 16,
     paddingHorizontal: 14,
     paddingVertical: 13,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.2)',
   },
   createLibraryDescriptionInput: {
     minHeight: 84,
     textAlignVertical: 'top',
   },
   shareLibraryList: {
-    marginTop: 12,
+    marginTop: 14,
   },
   shareLibraryListContent: {
     gap: 10,
@@ -625,18 +666,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#252525',
-    borderRadius: 12,
+    backgroundColor: '#07172b',
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.12)',
   },
   shareLibraryButtonPressed: {
-    backgroundColor: '#333',
+    backgroundColor: '#0a1f38',
   },
   shareLibraryButtonSelected: {
-    backgroundColor: 'rgba(29, 185, 84, 0.2)',
-    borderWidth: 1,
-    borderColor: '#1db954',
+    backgroundColor: 'rgba(0, 229, 255, 0.15)',
+    borderWidth: 1.5,
+    borderColor: '#00e5ff',
   },
   shareLibraryText: {
     flex: 1,
@@ -647,83 +690,93 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   shareLibraryCount: {
-    color: '#888',
+    color: '#7b95b0',
     fontSize: 12,
     marginTop: 3,
   },
   shareLibraryCheck: {
-    color: '#1db954',
-    fontSize: 22,
-    fontWeight: '700',
+    color: '#00e5ff',
+    fontSize: 20,
+    fontWeight: '800',
     marginLeft: 12,
   },
   shareCreateLibraryButton: {
     alignItems: 'center',
     flexDirection: 'row',
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#1db954',
+    borderColor: '#00e5ff',
     borderStyle: 'dashed',
     paddingHorizontal: 16,
     paddingVertical: 13,
+    backgroundColor: 'rgba(0, 229, 255, 0.05)',
   },
   shareCreateLibraryButtonPressed: {
-    backgroundColor: 'rgba(29, 185, 84, 0.12)',
+    backgroundColor: 'rgba(0, 229, 255, 0.12)',
   },
   shareCreateLibraryIcon: {
-    color: '#1db954',
-    fontSize: 24,
-    fontWeight: '500',
+    color: '#00e5ff',
+    fontSize: 22,
+    fontWeight: '700',
     marginRight: 10,
   },
   shareCreateLibraryText: {
-    color: '#1db954',
+    color: '#00e5ff',
     fontSize: 15,
     fontWeight: '700',
   },
   shareSaveButton: {
     alignItems: 'center',
-    borderRadius: 12,
-    backgroundColor: '#1db954',
+    borderRadius: 14,
+    backgroundColor: '#00e5ff',
     paddingVertical: 14,
-    marginTop: 4,
+    marginTop: 6,
+    shadowColor: '#00e5ff',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+    elevation: 4,
   },
   shareSaveButtonDisabled: {
-    backgroundColor: '#3a3a3a',
+    backgroundColor: '#0c1b2c',
+    shadowOpacity: 0,
+    elevation: 0,
   },
   shareSaveButtonPressed: {
-    backgroundColor: '#18a34a',
+    opacity: 0.85,
   },
   shareSaveText: {
-    color: '#fff',
+    color: '#030914',
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '800',
   },
   shareSavingStatus: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'center',
-    borderRadius: 12,
-    backgroundColor: '#252525',
+    borderRadius: 14,
+    backgroundColor: '#07172b',
     paddingVertical: 14,
-    marginTop: 4,
+    marginTop: 6,
   },
   shareSavingText: {
-    color: '#1db954',
-    fontSize: 16,
+    color: '#00e5ff',
+    fontSize: 15,
     fontWeight: '700',
     marginLeft: 10,
   },
   shareCancelButton: {
     alignItems: 'center',
-    borderRadius: 12,
-    backgroundColor: '#1db954',
+    borderRadius: 14,
+    backgroundColor: '#091829',
     paddingVertical: 14,
-    marginTop: 4,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 229, 255, 0.15)',
   },
   shareCancelText: {
-    color: '#fff',
-    fontSize: 16,
+    color: '#7b95b0',
+    fontSize: 15,
     fontWeight: '700',
   },
   scroll: {
@@ -739,13 +792,13 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 2,
-    backgroundColor: '#121212',
+    backgroundColor: '#030914',
   },
   scrollContent: {
     paddingBottom: 20,
   },
 
-  /* â”€â”€ Top Bar â”€â”€ */
+  /* ── Top Bar ── */
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -753,7 +806,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#1e1e1e',
+    borderBottomColor: 'rgba(0, 229, 255, 0.12)',
+    backgroundColor: '#030914',
   },
   topBarLeft: {
     flexDirection: 'row',
@@ -768,48 +822,57 @@ const styles = StyleSheet.create({
     borderRadius: 18,
   },
   menuButtonPressed: {
-    backgroundColor: '#252525',
+    backgroundColor: '#07172b',
   },
   menuButtonText: {
-    color: '#fff',
-    fontSize: 24,
-    lineHeight: 28,
+    color: '#00e5ff',
+    fontSize: 22,
+    lineHeight: 26,
   },
   topBarIcon: {
     width: 32,
     height: 32,
-    borderRadius: 8,
-    backgroundColor: '#1db954',
+    borderRadius: 10,
+    backgroundColor: '#041324',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
+    borderWidth: 1.5,
+    borderColor: '#00e5ff',
+    shadowColor: '#00e5ff',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.6,
+    shadowRadius: 6,
+    elevation: 3,
   },
   topBarIconText: {
-    color: '#fff',
+    color: '#00e5ff',
     fontSize: 16,
+    fontWeight: '700',
   },
   topBarTitle: {
-    color: '#fff',
+    color: '#ffffff',
     fontSize: 18,
-    fontWeight: '700',
+    fontWeight: '800',
+    letterSpacing: 0.5,
   },
   menuBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.35)',
+    backgroundColor: 'rgba(1, 6, 14, 0.5)',
   },
   menuCard: {
     width: 190,
     marginTop: 58,
     marginLeft: 12,
     paddingVertical: 6,
-    borderRadius: 12,
-    backgroundColor: '#252525',
-    borderWidth: 1,
-    borderColor: '#333',
-    shadowColor: '#000',
+    borderRadius: 16,
+    backgroundColor: '#051222',
+    borderWidth: 1.5,
+    borderColor: 'rgba(0, 229, 255, 0.25)',
+    shadowColor: '#00e5ff',
     shadowOpacity: 0.35,
-    shadowRadius: 10,
-    elevation: 8,
+    shadowRadius: 14,
+    elevation: 10,
   },
   menuItem: {
     flexDirection: 'row',
@@ -819,22 +882,25 @@ const styles = StyleSheet.create({
   },
   menuItemIcon: {
     width: 26,
-    color: '#1db954',
-    fontSize: 22,
+    color: '#00e5ff',
+    fontSize: 20,
     textAlign: 'center',
+    fontWeight: '700',
   },
   menuItemText: {
-    color: '#fff',
+    color: '#e2ebf5',
     fontSize: 15,
     fontWeight: '600',
     marginLeft: 10,
   },
 
-  /* â”€â”€ Error â”€â”€ */
+  /* ── Error ── */
   errorBanner: {
-    backgroundColor: 'rgba(220, 50, 50, 0.15)',
+    backgroundColor: 'rgba(255, 80, 80, 0.15)',
     paddingHorizontal: 16,
     paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 80, 80, 0.3)',
   },
   errorText: {
     color: '#ff6b6b',
@@ -842,57 +908,11 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  /* â”€â”€ Now Playing â”€â”€ */
-  nowPlaying: {
-    margin: 16,
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#252525',
-  },
-  npLabel: {
-    color: '#1db954',
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-    marginBottom: 12,
-  },
-  npRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  npCover: {
-    width: 80,
-    height: 80,
-    borderRadius: 8,
-    backgroundColor: '#252525',
-  },
-  npMeta: {
-    flex: 1,
-    marginLeft: 14,
-  },
-  npTitle: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '700',
-    lineHeight: 22,
-  },
-  npArtist: {
-    color: '#888',
-    fontSize: 14,
-    marginTop: 3,
-  },
-  npDuration: {
-    color: '#555',
-    fontSize: 13,
-    marginTop: 4,
-    fontWeight: '600',
-  },
-  /* â”€â”€ Library Tabs â”€â”€ */
+  /* ── Library Tabs ── */
   libraryTabsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 2,
   },
   libraryTabsScroll: {
     flex: 1,
@@ -909,161 +929,190 @@ const styles = StyleSheet.create({
   tab: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    backgroundColor: '#061324',
+    paddingHorizontal: 15,
+    paddingVertical: 9,
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#252525',
+    borderColor: 'rgba(0, 229, 255, 0.18)',
     gap: 6,
   },
   tabActive: {
-    backgroundColor: '#1db954',
-    borderColor: '#1db954',
+    backgroundColor: '#00e5ff',
+    borderColor: '#00e5ff',
+    shadowColor: '#00e5ff',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.65,
+    shadowRadius: 8,
+    elevation: 4,
   },
   tabText: {
-    color: '#999',
+    color: '#7b95b0',
     fontSize: 13,
     fontWeight: '600',
   },
   tabTextActive: {
-    color: '#fff',
-    fontWeight: '700',
+    color: '#030914',
+    fontWeight: '800',
   },
   tabCount: {
-    color: '#555',
+    color: '#49637d',
     fontSize: 11,
     fontWeight: '700',
   },
   tabCountActive: {
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(3, 9, 20, 0.75)',
+    fontWeight: '800',
   },
 
-  /* â”€â”€ Track Header â”€â”€ */
+  /* ── Track Header ── */
   trackHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 16,
-    marginTop: 16,
+    marginTop: 14,
     marginBottom: 8,
   },
   trackHeaderTitle: {
-    color: '#fff',
-    fontSize: 18,
+    color: '#ffffff',
+    fontSize: 17,
     fontWeight: '700',
   },
   trackHeaderCount: {
-    color: '#666',
+    color: '#00e5ff',
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
+    textShadowColor: 'rgba(0, 229, 255, 0.5)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 6,
   },
 
-  /* â”€â”€ Song List â”€â”€ */
+  /* ── Song List ── */
   songList: {
-    paddingHorizontal: 8,
+    paddingHorizontal: 16,
+    paddingTop: 6,
   },
   songRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 8,
-    borderRadius: 8,
-    marginBottom: 2,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.05)',
   },
   songRowActive: {
-    backgroundColor: 'rgba(29, 185, 84, 0.08)',
+    backgroundColor: 'transparent',
   },
   songRowPressed: {
-    backgroundColor: '#1a1a1a',
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
   },
   songIndex: {
-    width: 28,
+    width: 22,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
   },
   songIndexText: {
-    color: '#555',
+    color: '#4e657d',
     fontSize: 14,
     fontWeight: '600',
   },
   songIndexTextActive: {
-    color: '#1db954',
+    color: '#00e5ff',
+    fontWeight: '800',
   },
-  songIndexPlaying: {
-    color: '#1db954',
-    fontSize: 12,
+  miniEqualizer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    height: 14,
+    gap: 2,
+  },
+  miniEqBar: {
+    width: 2.5,
+    backgroundColor: '#00e5ff',
+    borderRadius: 1.5,
   },
   songCover: {
-    width: 48,
-    height: 48,
+    width: 46,
+    height: 46,
     borderRadius: 6,
-    backgroundColor: '#252525',
-    marginRight: 12,
+    backgroundColor: '#071526',
+    marginRight: 14,
   },
   songInfo: {
     flex: 1,
     minWidth: 0,
+    justifyContent: 'center',
   },
   songTitle: {
-    color: '#e0e0e0',
+    color: '#ffffff',
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '500',
+    lineHeight: 20,
   },
   songTitleActive: {
-    color: '#1db954',
+    color: '#00e5ff',
+    fontWeight: '700',
   },
   songArtist: {
-    color: '#777',
+    color: '#7b95b0',
     fontSize: 13,
     marginTop: 2,
   },
   songRight: {
-    alignItems: 'flex-end',
-    marginLeft: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 12,
+    gap: 8,
   },
   queuedBadge: {
-    backgroundColor: '#252525',
-    paddingHorizontal: 6,
+    backgroundColor: '#0a1d33',
+    paddingHorizontal: 5,
     paddingVertical: 2,
     borderRadius: 4,
-    marginBottom: 3,
   },
   queuedText: {
-    color: '#666',
+    color: '#7895b3',
     fontSize: 10,
     fontWeight: '600',
   },
   songDur: {
-    color: '#666',
+    color: '#5d768f',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '500',
+  },
+  songDurActive: {
+    color: '#00e5ff',
+    fontWeight: '700',
+  },
+  rowWaveContainer: {
+    marginRight: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   downloadedBadge: {
-    color: '#1db954',
-    fontSize: 10,
-    fontWeight: '700',
-    marginTop: 3,
+    color: '#00e5ff',
+    fontSize: 13,
+    fontWeight: '800',
   },
   onlineBadge: {
-    color: '#aaa',
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 2,
+    color: '#506c88',
+    fontSize: 15,
+    fontWeight: '600',
   },
   downloadButton: {
     alignItems: 'center',
-    height: 28,
     justifyContent: 'center',
-    marginTop: 2,
-    width: 28,
+    width: 24,
+    height: 24,
   },
   downloadProgress: {
-    color: '#1db954',
-    fontSize: 10,
-    fontWeight: '700',
+    color: '#00e5ff',
+    fontSize: 11,
+    fontWeight: '800',
   },
 
-  /* â”€â”€ Empty â”€â”€ */
+  /* ── Empty ── */
   empty: {
     alignItems: 'center',
     paddingVertical: 48,
@@ -1074,212 +1123,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   emptyTitle: {
-    color: '#ccc',
+    color: '#c5d5e5',
     fontSize: 18,
     fontWeight: '700',
   },
   emptyText: {
-    color: '#666',
+    color: '#657e96',
     fontSize: 14,
     marginTop: 6,
     textAlign: 'center',
     lineHeight: 20,
-  },
-
-  /* â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-     â”€â”€ Bottom Sheet (Pull-up Player) â”€â”€
-     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */
-  sheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: '#181818',
-    borderTopWidth: 1,
-    borderTopColor: '#2a2a2a',
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    overflow: 'hidden',
-  },
-  dragZone: {
-    // The top area that is always visible and draggable
-  },
-  dragHandleWrap: {
-    alignItems: 'center',
-    paddingTop: 8,
-    paddingBottom: 4,
-  },
-  dragHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#444',
-  },
-
-  /* â”€â”€ Mini Row (collapsed) â”€â”€ */
-  miniRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingBottom: 8,
-    height: MINI_HEIGHT - 12, // minus drag handle height
-  },
-  miniCover: {
-    width: 40,
-    height: 40,
-    borderRadius: 6,
-    backgroundColor: '#252525',
-  },
-  miniMeta: {
-    flex: 1,
-    marginLeft: 10,
-    minWidth: 0,
-  },
-  miniTitle: {
-    color: '#e0e0e0',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  miniArtist: {
-    color: '#777',
-    fontSize: 12,
-    marginTop: 1,
-  },
-  miniBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 2,
-  },
-  miniBtnText: {
-    color: '#bbb',
-    fontSize: 15,
-  },
-  miniBtnPlay: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    backgroundColor: '#1db954',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 6,
-    marginRight: 2,
-  },
-  miniBtnPlayText: {
-    color: '#fff',
-    fontSize: 17,
-  },
-
-  /* â”€â”€ Expanded Content â”€â”€ */
-  expandedContent: {
-    paddingHorizontal: 24,
-    paddingTop: 4,
-    alignItems: 'center',
-  },
-  expandedCoverWrap: {
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  expandedCover: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#252525',
-  },
-  expandedTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-    lineHeight: 24,
-  },
-  expandedArtist: {
-    color: '#888',
-    fontSize: 14,
-    marginTop: 3,
-    textAlign: 'center',
-  },
-  queueLabel: {
-    color: '#888',
-    fontSize: 11,
-    fontWeight: '600',
-    textAlign: 'center',
-    marginTop: 2,
-  },
-
-  /* â”€â”€ Progress Bar â”€â”€ */
-  progressRow: {
-    width: '100%',
-    marginTop: 14,
-  },
-  progressBar: {
-    height: 3,
-    backgroundColor: '#333',
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    width: '35%',
-    height: '100%',
-    backgroundColor: '#1db954',
-    borderRadius: 2,
-  },
-  progressTimes: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 4,
-  },
-  progressTime: {
-    color: '#666',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-
-  /* â”€â”€ Expanded Controls â”€â”€ */
-  expandedControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 12,
-    gap: 20,
-  },
-  exBtn: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#252525',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exBtnPressed: {
-    backgroundColor: '#333',
-  },
-  exBtnText: {
-    color: '#ccc',
-    fontSize: 20,
-  },
-  exBtnPlay: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#1db954',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  exBtnPlayPressed: {
-    backgroundColor: '#18a34a',
-  },
-  exBtnPlayText: {
-    color: '#fff',
-    fontSize: 24,
-  },
-
-  /* â”€â”€ Status â”€â”€ */
-  expandedStatus: {
-    color: '#555',
-    fontSize: 12,
-    fontWeight: '600',
-    marginTop: 10,
   },
 });
