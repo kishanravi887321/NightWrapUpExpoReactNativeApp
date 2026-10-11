@@ -46,7 +46,11 @@ export const normalizeImageUrl = (value?: string) => {
   return imageUrl;
 };
 
-export const buildYoutubeThumbnail = (videoId?: string, youtubeUrl?: string) => {
+export const buildYoutubeThumbnail = (
+  videoId?: string,
+  youtubeUrl?: string,
+  quality: 'maxresdefault' | 'hqdefault' | 'mqdefault' = 'maxresdefault',
+) => {
   let resolvedVideoId = videoId?.trim();
 
   if (!resolvedVideoId && youtubeUrl) {
@@ -59,6 +63,6 @@ export const buildYoutubeThumbnail = (videoId?: string, youtubeUrl?: string) => 
   }
 
   return resolvedVideoId
-    ? `https://i.ytimg.com/vi/${encodeURIComponent(resolvedVideoId)}/hqdefault.jpg`
+    ? `https://i.ytimg.com/vi/${encodeURIComponent(resolvedVideoId)}/${quality}.jpg`
     : undefined;
 };
