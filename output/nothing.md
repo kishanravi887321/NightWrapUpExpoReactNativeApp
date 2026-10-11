@@ -228,3 +228,57 @@ Changes:
 - Local songs continue to play when the internet is unavailable.
 - Before logout, the app warns that saved local tracks will be removed.
 - Confirmed logout clears saved tracks but keeps downloaded song files.
+
+## Latest update - Version 07
+
+Version 07 introduces a complete Cyber Obsidian & Neon Cyan visual redesign, a 0 ms latency audio visualizer engine, streamlined offline management, and optimistic seeking controls.
+
+Changes:
+
+- **Cyber Obsidian & Neon Cyan UI Overhaul**:
+  - Replaced all legacy dark-gray (`#121212`, `#1a1a1a`) and green (`#1db954`) elements with a unified theme:
+    - Backgrounds: Cyber Obsidian `#030914`
+    - Cards and panels: `#051120` and `#07172b` with subtle cyan borders (`rgba(0, 229, 255, 0.15)`)
+    - Accents, badges, and primary controls: Neon Cyan `#00e5ff`
+  - Applied across all screens: `Library`, `Tracks`, `Offline`, `Settings`, and `Login`.
+  - Added glowing `♫` header badge branding across top bars.
+
+- **Dynamic Deterministic Song Waveforms & Visualizer Engine**:
+  - Implemented dynamic audio waveform fingerprinting based on song title, artist, duration, and elapsed playback position (`src/utils/waveform.ts`).
+  - Added `TopMusicPlayerCard` featuring real-time 6-band animated frequency driver bars with cyan glow.
+  - Added `RowWaveVisualizer` inside active song rows displaying 3-bar rhythm animations.
+  - Added 0 ms immediate freeze: all visualizer bars synchronously stop and reset to baseline the instant audio is paused.
+
+- **0 ms Latency Optimistic Playback**:
+  - Implemented optimistic `internalPlaying` toggle states across player cards so play/pause buttons react in 0 ms without waiting for native player callbacks.
+  - Added `userPauseIntentRef` to guard against in-flight native playback status race conditions.
+  - Tapping an active row smoothly toggles play/pause without track reloads.
+
+- **Single-Song Recursive Repeat Mode**:
+  - Added a dedicated loop mode (`🔂`) on the top player card that repeats only the active track continuously until toggled off.
+
+- **Mini Seek Bar on Bottom Player**:
+  - Added a direct scrub / jump progress bar directly to the collapsed `BottomSheetPlayer` allowing instant seeking into any part of the song without expanding the drawer.
+
+- **Streamlined Offline Experience**:
+  - Redesigned `Offline` into a clean, clutter-free 2-level directory flow:
+    - **Level 1**: Lists offline library folders (`📁`) with total downloaded song counts and cyan navigation chevrons (`›`).
+    - **Level 2**: Tapping a folder opens the stored song list with a prominent `‹ All offline libraries` back button, song details, offline status badges, cyan play/pause toggles, and local removal actions (`✕`).
+  - Removed top player cards, visualizers, and tabs from the Offline screen for a direct, minimal interface.
+
+- **Library Row Refinements**:
+  - Removed song row count numbering and static leftmost visualizers, giving rows an artwork-first layout.
+
+## Version 07 APK Build
+
+To generate the installable Android APK for Version 07:
+
+```powershell
+cd Nighty
+npx eas build --profile preview --platform android
+```
+
+After building:
+1. Download the generated `.apk` file into `output/version--07/`.
+2. Install the APK on the Android device.
+3. Enjoy the Cyber Obsidian theme, instantaneous audio response, and streamlined offline library navigation.
