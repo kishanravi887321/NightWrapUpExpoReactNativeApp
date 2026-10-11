@@ -175,16 +175,26 @@ Changes:
 
 - Added bottom navigation for:
   - Libraries
+  - Tracks
   - Offline
   - Settings
-- Added a download action to ready songs in the library.
+- Added a download action to ready songs in the library using the `☁` symbol.
+- The cloud symbol starts the download directly; a percentage is shown while downloading.
+- Replaced text-based online/offline indicators with symbols:
+  - `☁` — available online and ready to download
+  - `⇩` — saved locally and available offline
+  - `⏳` — audio preparation is pending
 - Downloads use the existing Cloudinary audio URL and are stored in the app's private device storage.
-- Added download progress and an `Offline` status on downloaded songs.
-- Added an Offline screen listing songs saved on the current device.
+- Added download progress and local-file status on downloaded songs.
+- Added an Offline screen that first shows libraries containing local songs.
+- Users can open a library in Offline and see only its downloaded songs.
+- Added local playback controls in the Offline section, including the bottom player, progress, previous, next, and automatic next-song playback.
+- Added local-only removal for downloaded songs. Removing a local song deletes the device file and metadata but keeps the backend library song available online.
 - Each local download stores its library ID and library name, so the downloaded song remains associated with the library where it was saved.
 - Playback now prefers a valid local file and falls back to the Cloudinary URL when the song is not downloaded.
-- When a song is selected from a library or reached through the queue, the audio path is resolved as `local file path -> Cloudinary URL`.
-- Automatic next-song playback supports mixed queues containing both local and online songs.
+- When a song is selected from a library or reached through a saved track, the audio path is resolved as `local file path -> Cloudinary URL`.
+- Automatic next-song playback supports mixed tracks containing both local and online songs.
+- Added a safe artwork fallback so older local downloads without thumbnails do not produce empty-image warnings.
 - Existing login, library, YouTube sharing, library creation, background playback, and lock-screen APIs remain unchanged.
 - The mobile app no longer sends play-count update requests when a song starts.
 - Local download metadata is cleaned when a saved file no longer exists.
@@ -197,3 +207,24 @@ npx eas build --profile preview --platform android
 ```
 
 Downloaded songs are device-specific. They are removed when the app is uninstalled and are not synchronized to another phone.
+
+## Latest update - Version 06
+
+Version 06 adds locally saved custom tracks under the new `Tracks` navigation tab.
+
+Changes:
+
+- Added `Tracks` as the second bottom-navigation tab.
+- Added local track creation with three modes:
+  - `Online` — uses Cloudinary audio URLs.
+  - `Offline` — uses only songs downloaded to the device.
+  - `Mixed` — prefers a local file and falls back to Cloudinary.
+- Users can name a track and select songs from the loaded libraries.
+- Saved tracks are stored only on the device and do not create backend records.
+- Added play and delete actions for saved tracks.
+- Track playback reuses the existing bottom music player.
+- Previous, next, play/pause, progress, and automatic advancement are available for track playback.
+- If an online track fails because of an unstable connection, the track automatically attempts the next track.
+- Local songs continue to play when the internet is unavailable.
+- Before logout, the app warns that saved local tracks will be removed.
+- Confirmed logout clears saved tracks but keeps downloaded song files.
