@@ -18,10 +18,12 @@ export const mapSong = (song: ApiSong, index: number): SongItem => ({
   duration: Number(song.audio?.duration ?? 180 + index * 12),
   thumbnail:
     normalizeImageUrl(song.thumbnail) ??
-    buildYoutubeThumbnail(song.youtubeVideoId, song.youtubeUrl) ??
+    buildYoutubeThumbnail(song.youtubeVideoId, song.youtubeUrl, 'maxresdefault') ??
+    buildYoutubeThumbnail(song.youtubeVideoId, song.youtubeUrl, 'hqdefault') ??
     buildFallbackImage(index),
   fallbackThumbnail:
-    buildYoutubeThumbnail(song.youtubeVideoId, song.youtubeUrl) ?? buildFallbackImage(index),
+    buildYoutubeThumbnail(song.youtubeVideoId, song.youtubeUrl, 'hqdefault') ??
+    buildFallbackImage(index),
   audioUrl: song.audio?.url,
   tag: song.audio?.status === 'ready' ? 'stream ready' : 'queued',
   mood: song.playCount && song.playCount > 0 ? 'popular' : 'new',
