@@ -30,15 +30,15 @@ export function BottomNavigation({ activeTab, onChange }: BottomNavigationProps)
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#181818',
-    borderTopColor: '#2a2a2a',
+    backgroundColor: '#040d18',
+    borderTopColor: 'rgba(0, 229, 255, 0.15)',
     borderTopWidth: 1,
     flexDirection: 'row',
     paddingBottom: 8,
     paddingTop: 8,
   },
   item: { alignItems: 'center', flex: 1 },
-  icon: { color: '#777', fontSize: 20, height: 25 },
-  label: { color: '#777', fontSize: 11, marginTop: 2 },
-  active: { color: '#1db954' },
+  icon: { color: '#59748f', fontSize: 20, height: 25 },
+  label: { color: '#59748f', fontSize: 11, marginTop: 2, fontWeight: '600' },
+  active: { color: '#00e5ff', textShadowColor: 'rgba(0, 229, 255, 0.6)', textShadowRadius: 8, fontWeight: '700' },
 });
