@@ -1,6 +1,10 @@
 import { registerRootComponent } from 'expo';
+import * as SplashScreen from 'expo-splash-screen';
 
 import App from './App';
+
+// Prevent the native splash screen from auto-hiding before our animated component mounts
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 // registerRootComponent calls AppRegistry.registerComponent('main', () => App);
 // It also ensures that whether you load the app in Expo Go or in a native build,
