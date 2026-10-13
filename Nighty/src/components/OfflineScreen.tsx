@@ -23,8 +23,8 @@ type OfflineScreenProps = {
   isPlaying: boolean;
   currentTime: number;
   onTogglePlay: () => void;
-  onPrevious: () => void;
-  onNext: () => void;
+  onPrevious: (libraryId?: string | null) => void;
+  onNext: (libraryId?: string | null) => void;
   onSeek: (seconds: number) => void;
 };
 
@@ -274,8 +274,8 @@ export function OfflineScreen({
           activeTrack={playerTrack}
           isPlaying={isPlaying}
           onTogglePlay={onTogglePlay}
-          onPrevious={onPrevious}
-          onNext={onNext}
+          onPrevious={() => onPrevious(selectedLibraryId)}
+          onNext={() => onNext(selectedLibraryId)}
           currentTime={currentTime}
           totalDuration={playerTrack.duration}
           trackNumber={Math.max(1, playerIndex + 1)}
