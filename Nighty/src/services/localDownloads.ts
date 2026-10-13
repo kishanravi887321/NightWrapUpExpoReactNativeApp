@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { Directory, File, Paths } from 'expo-file-system';
 import { SongItem } from '../types/api';
 
@@ -14,11 +15,12 @@ export type LocalDownload = {
   size?: number;
 };
 
-const downloadsDirectory = new Directory(Paths.document, 'downloads');
-const metadataFile = new File(Paths.document, 'downloads-metadata.json');
+const isWeb = Platform.OS === 'web';
+const downloadsDirectory = !isWeb && Paths?.document ? new Directory(Paths.document, 'downloads') : null;
+const metadataFile = !isWeb && Paths?.document ? new File(Paths.document, 'downloads-metadata.json') : null;
 
 const readDownloads = async (): Promise<Record<string, LocalDownload>> => {
-  if (!metadataFile.exists) {
+  if (isWeb || !metadataFile || !metadataFile.exists) {
     return {};
   }
 
@@ -30,14 +32,22 @@ const readDownloads = async (): Promise<Record<string, LocalDownload>> => {
 };
 
 const writeDownloads = (downloads: Record<string, LocalDownload>) => {
+  if (isWeb || !metadataFile) return;
   metadataFile.create({ overwrite: true });
   metadataFile.write(JSON.stringify(downloads));
 };
 
 export const loadLocalDownloads = async (): Promise<Record<string, LocalDownload>> => {
+  if (isWeb) return {};
   const downloads = await readDownloads();
   const validDownloads = Object.fromEntries(
-    Object.entries(downloads).filter(([, download]) => new File(download.localUri).exists),
+    Object.entries(downloads).filter(([, download]) => {
+      try {
+        return new File(download.localUri).exists;
+      } catch {
+        return false;
+      }
+    }),
   );
   if (Object.keys(validDownloads).length !== Object.keys(downloads).length) {
     writeDownloads(validDownloads);
@@ -51,6 +61,10 @@ export const downloadSongLocally = async (
   libraryName: string,
   onProgress?: (progress: number) => void,
 ): Promise<LocalDownload> => {
+  if (isWeb || !downloadsDirectory) {
+    throw new Error('Local downloads are not supported on web.');
+  }
+
   if (!song.audioUrl) {
     throw new Error('This song is not ready to download yet.');
   }
@@ -85,12 +99,17 @@ export const downloadSongLocally = async (
 };
 
 export const removeLocalDownload = async (songId: string) => {
+  if (isWeb) return;
   const downloads = await readDownloads();
   const download = downloads[songId];
   if (download) {
-    const file = new File(download.localUri);
-    if (file.exists) {
-      file.delete();
+    try {
+      const file = new File(download.localUri);
+      if (file.exists) {
+        file.delete();
+      }
+    } catch {
+      // ignore
     }
   }
   delete downloads[songId];
@@ -102,8 +121,14 @@ export const getPlayableUri = (
   downloads: Record<string, LocalDownload>,
 ): string | null => {
   const localUri = downloads[song._id]?.localUri;
-  if (localUri && new File(localUri).exists) {
-    return localUri;
+  if (!isWeb && localUri) {
+    try {
+      if (new File(localUri).exists) {
+        return localUri;
+      }
+    } catch {
+      // ignore
+    }
   }
   return song.audioUrl ?? null;
 };

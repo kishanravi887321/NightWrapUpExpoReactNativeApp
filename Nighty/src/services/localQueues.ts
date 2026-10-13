@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { File, Paths } from 'expo-file-system';
 import { LocalDownload } from './localDownloads';
 import { SongItem } from '../types/api';
@@ -24,10 +25,11 @@ export type LocalQueue = {
   updatedAt: string;
 };
 
-const queuesFile = new File(Paths.document, 'local-queues.json');
+const isWeb = Platform.OS === 'web';
+const queuesFile = !isWeb && Paths?.document ? new File(Paths.document, 'local-queues.json') : null;
 
 const readQueues = async (): Promise<LocalQueue[]> => {
-  if (!queuesFile.exists) return [];
+  if (isWeb || !queuesFile || !queuesFile.exists) return [];
   try {
     const value = JSON.parse(await queuesFile.text());
     return Array.isArray(value) ? value : [];
@@ -37,6 +39,7 @@ const readQueues = async (): Promise<LocalQueue[]> => {
 };
 
 const writeQueues = (queues: LocalQueue[]) => {
+  if (isWeb || !queuesFile) return;
   queuesFile.create({ overwrite: true });
   queuesFile.write(JSON.stringify(queues));
 };

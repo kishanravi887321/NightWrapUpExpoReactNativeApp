@@ -12,9 +12,10 @@ import { StatusBar } from 'expo-status-bar';
 
 type SettingsScreenProps = {
   onLogout: () => void;
+  onShowSplash?: () => void;
 };
 
-export function SettingsScreen({ onLogout }: SettingsScreenProps) {
+export function SettingsScreen({ onLogout, onShowSplash }: SettingsScreenProps) {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <StatusBar style="light" />
@@ -109,6 +110,27 @@ export function SettingsScreen({ onLogout }: SettingsScreenProps) {
               <Text style={styles.infoValue}>Version 1.0.0 (Cyberpunk Edition)</Text>
             </View>
           </View>
+
+          {onShowSplash && (
+            <>
+              <View style={styles.divider} />
+              <Pressable
+                style={({ pressed }) => [styles.actionButton, pressed && styles.actionButtonPressed]}
+                onPress={onShowSplash}
+              >
+                <View style={styles.actionLeft}>
+                  <View style={styles.actionIconWrap}>
+                    <Text style={styles.actionIcon}>✨</Text>
+                  </View>
+                  <View>
+                    <Text style={styles.actionTitle}>Replay Animated Splash</Text>
+                    <Text style={styles.actionSubtitle}>Preview startup animation sequence</Text>
+                  </View>
+                </View>
+                <Text style={styles.actionChevron}>›</Text>
+              </Pressable>
+            </>
+          )}
         </View>
 
         {/* ── Sign Out ── */}

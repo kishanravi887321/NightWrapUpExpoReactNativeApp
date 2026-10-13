@@ -4,6 +4,7 @@ import { setAudioModeAsync, useAudioPlayer, useAudioPlayerStatus } from 'expo-au
 import { useShareIntent } from 'expo-share-intent';
 import { BottomNavigation, AppTab } from './components/BottomNavigation';
 import { LoginScreen } from './components/LoginScreen';
+import { SplashScreen } from './components/SplashScreen';
 import { LibraryScreen } from './components/LibraryScreen';
 import { OfflineScreen } from './components/OfflineScreen';
 import { SettingsScreen } from './components/SettingsScreen';
@@ -29,6 +30,7 @@ import {
 } from './services/localQueues';
 
 export default function App() {
+  const [showSplash, setShowSplash] = useState(true);
   const [email, setEmail] = useState('');
   const [secretKey, setSecretKey] = useState('');
   const [error, setError] = useState('');
@@ -784,6 +786,10 @@ export default function App() {
     }
   };
 
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
+  }
+
   if (!isAuthenticated) {
     return (
       <LoginScreen
@@ -906,7 +912,7 @@ export default function App() {
           onSeek={(seconds) => void handleSeek(seconds)}
         />
       ) : (
-        <SettingsScreen onLogout={confirmLogout} />
+        <SettingsScreen onLogout={confirmLogout} onShowSplash={() => setShowSplash(true)} />
       )}
       <BottomNavigation
         activeTab={activeTab}
