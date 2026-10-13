@@ -38,6 +38,8 @@ export default function App() {
   const [libraries, setLibraries] = useState<LibraryItem[]>([]);
   const [songsByLibrary, setSongsByLibrary] = useState<Record<string, SongItem[]>>({});
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
+  const [playingLibraryId, setPlayingLibraryId] = useState<string | null>(null);
+  const [playbackMode, setPlaybackMode] = useState<'library' | 'offline' | 'queue' | null>(null);
   const [activeSongId, setActiveSongId] = useState<string | null>(null);
   const [audioSourceUrl, setAudioSourceUrl] = useState<string | null>(null);
   const [sharedYoutubeUrl, setSharedYoutubeUrl] = useState<string | null>(null);
@@ -60,18 +62,50 @@ export default function App() {
   const audioStatus = useAudioPlayerStatus(audio);
   const userPauseIntentRef = useRef(false);
 
+  const isSongPlayable = (
+    song: SongItem | null | undefined,
+    downloads: Record<string, LocalDownload>,
+  ): boolean => {
+    if (!song) return false;
+    if (downloads[song._id]?.localUri) return true;
+    return Boolean(song.audioReady && song.audioUrl);
+  };
+
   const selectedLibrary = libraries.find((library) => library._id === selectedLibraryId) ?? null;
   const selectedSongs = useMemo(
     () => (selectedLibraryId ? songsByLibrary[selectedLibraryId] ?? [] : []),
     [selectedLibraryId, songsByLibrary],
   );
-  const activeTrack = useMemo(
-    () => selectedSongs.find((song) => song._id === activeSongId) ?? selectedSongs[0] ?? null,
-    [activeSongId, selectedSongs],
-  );
+
+  const playingSongs = useMemo(() => {
+    if (playingLibraryId && songsByLibrary[playingLibraryId]) {
+      return songsByLibrary[playingLibraryId];
+    }
+    return selectedSongs;
+  }, [playingLibraryId, songsByLibrary, selectedSongs]);
+
+  const activeTrack = useMemo(() => {
+    if (activeSongId) {
+      const inPlaying = playingSongs.find((song) => song._id === activeSongId);
+      if (inPlaying) return inPlaying;
+      const inSelected = selectedSongs.find((song) => song._id === activeSongId);
+      if (inSelected) return inSelected;
+      for (const libId of Object.keys(songsByLibrary)) {
+        const found = songsByLibrary[libId]?.find((s) => s._id === activeSongId);
+        if (found) return found;
+      }
+    }
+    const firstPlayable = selectedSongs.find((s) => isSongPlayable(s, localDownloads));
+    return firstPlayable ?? selectedSongs[0] ?? null;
+  }, [activeSongId, playingSongs, selectedSongs, songsByLibrary, localDownloads]);
+
   const currentTime = audioStatus.currentTime ?? 0;
   const totalDuration = audioStatus.duration > 0 ? audioStatus.duration : activeTrack?.duration ?? 0;
-  const trackNumber = Math.max(0, selectedSongs.findIndex((song) => song._id === activeTrack?._id) + 1);
+  const activePlaylist = playingLibraryId && songsByLibrary[playingLibraryId]?.length
+    ? songsByLibrary[playingLibraryId]
+    : selectedSongs;
+  const trackCount = activePlaylist.length;
+  const trackNumber = Math.max(0, activePlaylist.findIndex((song) => song._id === activeTrack?._id) + 1);
   const queueActiveTrack = queueTracks[queueIndex] ?? null;
 
   const loadSongsForLibrary = async (libraryId: string): Promise<SongItem[]> => {
@@ -250,22 +284,28 @@ export default function App() {
       return;
     }
 
-    audio.pause();
-    setAudioSourceUrl(null);
     setSelectedLibraryId(libraryId);
-    setActiveSongId(null);
-    setIsPlaying(false);
     setError('');
+
+    // If no song is currently playing, prepare the first playable song of the selected library
+    const isAudioActive = isPlaying || (audioStatus.isLoaded && !userPauseIntentRef.current);
+    if (!isAudioActive) {
+      setActiveSongId(null);
+    }
 
     try {
       const songs = await loadSongsForLibrary(libraryId);
-      setActiveSongId(songs[0]?._id ?? null);
+      if (!isAudioActive) {
+        const firstPlayable = songs.find((s) => isSongPlayable(s, localDownloads));
+        setActiveSongId(firstPlayable?._id ?? songs[0]?._id ?? null);
+      }
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load tracks.');
     }
   };
 
-  const playTrack = async (track: SongItem) => {
+  const playTrack = async (track: SongItem, libraryId?: string) => {
+    const targetLibraryId = libraryId ?? playingLibraryId ?? selectedLibraryId;
     const playableUri = getPlayableUri(track, localDownloads);
     if (!playableUri) {
       setIsPlaying(false);
@@ -276,8 +316,15 @@ export default function App() {
     try {
       setError('');
       userPauseIntentRef.current = false;
+      setPlaybackMode('library');
+      if (targetLibraryId) {
+        setPlayingLibraryId(targetLibraryId);
+      }
+      setActiveSongId(track._id);
+      setPlayingLocalSongId(null);
+      setIsQueuePlaying(false);
+
       audio.replace(playableUri);
-      setPlayingLocalSongId(localDownloads[track._id]?.localUri === playableUri ? track._id : null);
       audio.setActiveForLockScreen(true, {
         title: track.title,
         artist: track.artist,
@@ -313,6 +360,8 @@ export default function App() {
       return;
     }
 
+    setPlaybackMode('queue');
+    setPlayingLocalSongId(null);
     setQueueTracks(tracks);
     setQueueIndex(index);
     setIsQueuePlaying(true);
@@ -326,7 +375,6 @@ export default function App() {
         artworkUrl: track.thumbnail,
       });
       setAudioSourceUrl(playableUri);
-      setPlayingLocalSongId(localUri ? track._id : null);
       audio.play();
       setIsPlaying(true);
     } catch (playbackError) {
@@ -385,10 +433,13 @@ export default function App() {
   const handlePlayLocalSong = (download: LocalDownload) => {
     try {
       userPauseIntentRef.current = false;
+      setPlaybackMode('offline');
+      setIsQueuePlaying(false);
       audio.replace(download.localUri);
       audio.setActiveForLockScreen(true, {
         title: download.title,
         artist: download.artist,
+        artworkUrl: download.thumbnail,
       });
       setAudioSourceUrl(download.localUri);
       setPlayingLocalSongId(download.songId);
@@ -428,14 +479,36 @@ export default function App() {
     }
   };
 
-  const handleLocalTrackChange = (direction: 1 | -1) => {
-    const downloads = Object.values(localDownloads);
-    const currentIndex = downloads.findIndex((song) => song.songId === playingLocalSongId);
-    if (currentIndex < 0 || downloads.length < 2) {
+  const handleLocalTrackChange = (direction: 1 | -1, filterLibraryId?: string | null) => {
+    const currentDownload = playingLocalSongId ? localDownloads[playingLocalSongId] : null;
+    const targetLibraryId = filterLibraryId !== undefined ? filterLibraryId : currentDownload?.libraryId;
+
+    let candidates = Object.values(localDownloads);
+    if (targetLibraryId) {
+      const scoped = candidates.filter((song) => song.libraryId === targetLibraryId);
+      if (scoped.length > 0) {
+        candidates = scoped;
+      }
+    }
+
+    if (candidates.length === 0) {
       return;
     }
-    const nextIndex = (currentIndex + direction + downloads.length) % downloads.length;
-    handlePlayLocalSong(downloads[nextIndex]);
+
+    const currentIndex = candidates.findIndex((song) => song.songId === playingLocalSongId);
+    let nextIndex: number;
+    if (isShuffle && direction === 1 && candidates.length > 1) {
+      let rand = Math.floor(Math.random() * candidates.length);
+      if (rand === currentIndex) {
+        rand = (rand + 1) % candidates.length;
+      }
+      nextIndex = rand;
+    } else {
+      nextIndex = currentIndex >= 0
+        ? (currentIndex + direction + candidates.length) % candidates.length
+        : 0;
+    }
+    handlePlayLocalSong(candidates[nextIndex]);
   };
 
   const handleRemoveLocalSong = async (songId: string) => {
@@ -457,76 +530,107 @@ export default function App() {
     }
   };
 
-  const handleSongPress = async (songId: string) => {
-    if (!selectedLibraryId) {
+  const handleSongPress = async (songId: string, libraryId?: string) => {
+    const targetLibraryId = libraryId ?? selectedLibraryId;
+    if (!targetLibraryId) {
       return;
     }
 
-    if (songId === activeSongId && activeTrack) {
-      // User tapped the currently active song -> toggle play/pause smoothly
-      await handleTogglePlay();
+    if (songId === activeSongId && activeTrack && isPlaying) {
+      userPauseIntentRef.current = true;
+      setIsPlaying(false);
+      audio.pause();
       return;
     }
 
-    setActiveSongId(songId);
-    const selectedSong = selectedSongs.find((song) => song._id === songId);
+    if (songId === activeSongId && activeTrack && !isPlaying && audioStatus.isLoaded) {
+      userPauseIntentRef.current = false;
+      setIsPlaying(true);
+      audio.play();
+      return;
+    }
+
+    const playlist = songsByLibrary[targetLibraryId] ?? selectedSongs;
+    const selectedSong = playlist.find((song) => song._id === songId);
     if (selectedSong) {
-      await playTrack(selectedSong);
+      await playTrack(selectedSong, targetLibraryId);
     }
   };
 
   const handleTrackChange = async (direction: 1 | -1) => {
-    if (!activeTrack || selectedSongs.length < 2) {
+    const targetLibraryId = playingLibraryId ?? selectedLibraryId;
+    const currentPlaylist = (targetLibraryId ? songsByLibrary[targetLibraryId] : null) ?? selectedSongs;
+
+    if (!currentPlaylist || currentPlaylist.length === 0) {
       return;
     }
 
-    const currentIndex = selectedSongs.findIndex((song) => song._id === activeTrack._id);
+    const playableSongs = currentPlaylist.filter((song) => isSongPlayable(song, localDownloads));
+    if (playableSongs.length === 0) {
+      setError('No playable songs in this library.');
+      return;
+    }
+
+    const currentPlayableIndex = activeTrack
+      ? playableSongs.findIndex((song) => song._id === activeTrack._id)
+      : -1;
+
     let nextIndex: number;
     if (isShuffle && direction === 1) {
-      let rand = Math.floor(Math.random() * selectedSongs.length);
-      if (rand === currentIndex && selectedSongs.length > 1) {
-        rand = (rand + 1) % selectedSongs.length;
+      const otherIndices = playableSongs
+        .map((_, idx) => idx)
+        .filter((idx) => idx !== currentPlayableIndex);
+      if (otherIndices.length > 0) {
+        nextIndex = otherIndices[Math.floor(Math.random() * otherIndices.length)];
+      } else {
+        nextIndex = 0;
       }
-      nextIndex = rand;
     } else {
-      nextIndex = (currentIndex + direction + selectedSongs.length) % selectedSongs.length;
+      if (currentPlayableIndex >= 0) {
+        nextIndex = (currentPlayableIndex + direction + playableSongs.length) % playableSongs.length;
+      } else {
+        nextIndex = 0;
+      }
     }
-    await handleSongPress(selectedSongs[nextIndex]._id);
+
+    const nextSong = playableSongs[nextIndex];
+    if (nextSong) {
+      await playTrack(nextSong, targetLibraryId ?? undefined);
+    }
   };
 
   useEffect(() => {
     if (audioStatus.didJustFinish) {
       if (isRepeat) {
-        // Play only that particular song recursively until the user changes it or turns repeat off
         try {
           audio.seekTo(0);
           audio.play();
           setIsPlaying(true);
         } catch {
-          if (isQueuePlaying && queueTracks.length > 0 && queueIndex >= 0) {
+          if (playbackMode === 'queue' && queueTracks.length > 0 && queueIndex >= 0) {
             playQueueTrack(queueTracks, queueIndex);
-          } else if (playingLocalSongId && localDownloads[playingLocalSongId]) {
+          } else if (playbackMode === 'offline' && playingLocalSongId && localDownloads[playingLocalSongId]) {
             handlePlayLocalSong(localDownloads[playingLocalSongId]);
           } else if (activeTrack) {
-            void playTrack(activeTrack);
+            void playTrack(activeTrack, playingLibraryId ?? undefined);
           }
         }
         return;
       }
 
-      if (isQueuePlaying && queueTracks.length > 1) {
+      if (playbackMode === 'queue' && queueTracks.length > 1) {
         const next = isShuffle
           ? Math.floor(Math.random() * queueTracks.length)
           : (queueIndex + 1 + queueTracks.length) % queueTracks.length;
         playQueueTrack(queueTracks, next);
-      } else if (playingLocalSongId) {
+      } else if (playbackMode === 'offline') {
         handleLocalTrackChange(1);
       } else {
         void handleTrackChange(1);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioStatus.didJustFinish, isRepeat, isShuffle]);
+  }, [audioStatus.didJustFinish, isRepeat, isShuffle, playbackMode, playingLibraryId, activeSongId]);
 
   useEffect(() => {
     // When a queue track fails to load (e.g. online song with no internet), skip to next.
@@ -546,6 +650,8 @@ export default function App() {
     setLibraries([]);
     setSongsByLibrary({});
     setSelectedLibraryId(null);
+    setPlayingLibraryId(null);
+    setPlaybackMode(null);
     setActiveSongId(null);
     setIsAuthenticated(false);
     await clearLocalQueues();
@@ -620,17 +726,26 @@ export default function App() {
   };
 
   const handleTogglePlay = async () => {
-    if (!activeTrack || !getPlayableUri(activeTrack, localDownloads)) {
-      if (activeTrack) {
-        await playTrack(activeTrack);
+    if (!activeTrack) {
+      return;
+    }
+
+    const playableUri = getPlayableUri(activeTrack, localDownloads);
+    if (!playableUri) {
+      const targetLibraryId = playingLibraryId ?? selectedLibraryId;
+      const currentPlaylist = (targetLibraryId ? songsByLibrary[targetLibraryId] : null) ?? selectedSongs;
+      const firstPlayable = currentPlaylist.find((s) => isSongPlayable(s, localDownloads));
+      if (firstPlayable) {
+        await playTrack(firstPlayable, targetLibraryId ?? undefined);
+      } else {
+        setError('This song is not ready for playback yet.');
       }
       return;
     }
 
     try {
-      const playableUri = getPlayableUri(activeTrack, localDownloads);
       if (audioSourceUrl !== playableUri || !audioStatus.isLoaded) {
-        await playTrack(activeTrack);
+        await playTrack(activeTrack, playingLibraryId ?? selectedLibraryId ?? undefined);
         return;
       }
       if (isPlaying || audioStatus.playing) {
@@ -700,7 +815,7 @@ export default function App() {
           currentTime={currentTime}
           totalDuration={totalDuration}
           trackNumber={trackNumber}
-          trackCount={selectedSongs.length}
+          trackCount={trackCount}
           onSeek={(seconds) => void handleSeek(seconds)}
           onLogout={confirmLogout}
           onTogglePlay={() => void handleTogglePlay()}
@@ -786,8 +901,8 @@ export default function App() {
           isPlaying={isPlaying}
           currentTime={currentTime}
           onTogglePlay={handleToggleLocalPlay}
-          onPrevious={() => handleLocalTrackChange(-1)}
-          onNext={() => handleLocalTrackChange(1)}
+          onPrevious={(libId) => handleLocalTrackChange(-1, libId)}
+          onNext={(libId) => handleLocalTrackChange(1, libId)}
           onSeek={(seconds) => void handleSeek(seconds)}
         />
       ) : (
