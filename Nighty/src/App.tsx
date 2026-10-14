@@ -9,7 +9,7 @@ import { LibraryScreen } from './components/LibraryScreen';
 import { OfflineScreen } from './components/OfflineScreen';
 import { SettingsScreen } from './components/SettingsScreen';
 import { TracksScreen } from './components/TracksScreen';
-import { clearSession, createLibrary, fetchLibraries, fetchSongsForLibrary, getStoredToken, mobileLogin, saveSongToLibrary } from './services/api';
+import { clearSession, createLibrary, deleteSongFromLibrary, fetchLibraries, fetchSongsForLibrary, getStoredToken, mobileLogin, saveSongToLibrary } from './services/api';
 import {
   downloadSongLocally,
   getPlayableUri,
@@ -28,6 +28,7 @@ import {
   QueueMode,
   updateLocalQueue,
 } from './services/localQueues';
+import { playbackClock } from './services/playbackClock';
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -60,8 +61,10 @@ export default function App() {
   const [isRepeat, setIsRepeat] = useState(false);
   const [isShuffle, setIsShuffle] = useState(false);
   const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntent();
-  const audio = useAudioPlayer(null, { updateInterval: 250 });
+  const audio = useAudioPlayer(null, { updateInterval: 500 });
   const audioStatus = useAudioPlayerStatus(audio);
+  // Track the last played song id to detect switches and reset display time
+  const lastTrackIdRef = useRef<string | null>(null);
   const userPauseIntentRef = useRef(false);
 
   const isSongPlayable = (
@@ -101,8 +104,25 @@ export default function App() {
     return firstPlayable ?? selectedSongs[0] ?? null;
   }, [activeSongId, playingSongs, selectedSongs, songsByLibrary, localDownloads]);
 
-  const currentTime = audioStatus.currentTime ?? 0;
-  const totalDuration = audioStatus.duration > 0 ? audioStatus.duration : activeTrack?.duration ?? 0;
+  // Once the audio has loaded its real duration, keep it stable; fall back to metadata
+  const totalDuration = audioStatus.isLoaded && audioStatus.duration > 0
+    ? audioStatus.duration
+    : activeTrack?.duration ?? 0;
+
+  // Sync global playbackClock with audio state
+  useEffect(() => {
+    playbackClock.setTrack(activeTrack?._id ?? null, totalDuration);
+  }, [activeTrack?._id, totalDuration]);
+
+  useEffect(() => {
+    playbackClock.setPlaying(isPlaying);
+  }, [isPlaying]);
+
+  useEffect(() => {
+    playbackClock.syncNative(Math.max(0, audioStatus.currentTime ?? 0));
+  }, [audioStatus.currentTime]);
+
+  const currentTime = playbackClock.getTime();
   const activePlaylist = playingLibraryId && songsByLibrary[playingLibraryId]?.length
     ? songsByLibrary[playingLibraryId]
     : selectedSongs;
@@ -727,6 +747,52 @@ export default function App() {
     }
   };
 
+  const handleDeleteSong = async (song: SongItem, libraryId: string) => {
+    try {
+      setIsLoading(true);
+      setError('');
+
+      if (activeSongId === song._id) {
+        audio.pause();
+        setAudioSourceUrl(null);
+        setIsPlaying(false);
+      }
+
+      await deleteSongFromLibrary(song._id, libraryId);
+
+      setSongsByLibrary((current) => {
+        const existing = current[libraryId] ?? [];
+        const filtered = existing.filter((s) => s._id !== song._id);
+        return {
+          ...current,
+          [libraryId]: filtered,
+        };
+      });
+
+      setLibraries((current) =>
+        current.map((lib) =>
+          lib._id === libraryId
+            ? { ...lib, songCount: Math.max(0, (lib.songCount ?? 1) - 1) }
+            : lib,
+        ),
+      );
+
+      if (activeSongId === song._id) {
+        const remaining = (songsByLibrary[libraryId] ?? []).filter((s) => s._id !== song._id);
+        const nextPlayable = remaining.find((s) => isSongPlayable(s, localDownloads));
+        setActiveSongId(nextPlayable?._id ?? remaining[0]?._id ?? null);
+      }
+
+      if (localDownloads[song._id]) {
+        void handleRemoveLocalSong(song._id);
+      }
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Could not delete the song.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleTogglePlay = async () => {
     if (!activeTrack) {
       return;
@@ -769,15 +835,18 @@ export default function App() {
   const pendingSeekSecondsRef = useRef<number | null>(null);
 
   const handleSeek = async (seconds: number) => {
-    pendingSeekSecondsRef.current = seconds;
+    const target = Math.max(0, seconds);
+    playbackClock.seek(target);
+
+    pendingSeekSecondsRef.current = target;
     if (isSeekingRef.current) return;
     isSeekingRef.current = true;
 
     try {
       while (pendingSeekSecondsRef.current !== null) {
-        const target = pendingSeekSecondsRef.current;
+        const dest = pendingSeekSecondsRef.current;
         pendingSeekSecondsRef.current = null;
-        await audio.seekTo(Math.max(0, target));
+        await audio.seekTo(dest);
       }
     } catch (seekError) {
       setError(seekError instanceof Error ? `Unable to seek: ${seekError.message}` : 'Unable to seek.');
@@ -843,6 +912,7 @@ export default function App() {
           onToggleRepeat={() => setIsRepeat((prev) => !prev)}
           isShuffle={isShuffle}
           onToggleShuffle={() => setIsShuffle((prev) => !prev)}
+          onDeleteSong={(song, libId) => void handleDeleteSong(song, libId)}
         />
       ) : activeTab === 'tracks' ? (
         <TracksScreen
@@ -869,6 +939,7 @@ export default function App() {
           activeTrack={queueActiveTrack}
           isPlaying={isPlaying}
           currentTime={currentTime}
+          totalDuration={totalDuration}
           onTogglePlay={() => {
             if (!queueActiveTrack) return;
             // Resolve what URI we expect to be playing for this queue track.
@@ -906,6 +977,7 @@ export default function App() {
           onRemove={(songId) => void handleRemoveLocalSong(songId)}
           isPlaying={isPlaying}
           currentTime={currentTime}
+          totalDuration={totalDuration}
           onTogglePlay={handleToggleLocalPlay}
           onPrevious={(libId) => handleLocalTrackChange(-1, libId)}
           onNext={(libId) => handleLocalTrackChange(1, libId)}
