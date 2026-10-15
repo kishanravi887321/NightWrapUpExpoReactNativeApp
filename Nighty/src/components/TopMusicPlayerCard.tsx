@@ -14,6 +14,7 @@ import { SongItem } from '../types/api';
 import { formatTime } from '../utils/format';
 import { getSongWaveform } from '../utils/waveform';
 import { SongArtwork } from './SongArtwork';
+import { playbackClock, usePlaybackTime } from '../services/playbackClock';
 
 type TopMusicPlayerCardProps = {
   activeTrack: SongItem;
@@ -339,17 +340,9 @@ export function TopMusicPlayerCard({
     outputRange: ['0deg', '360deg'],
   });
 
-  const [optimisticSeekTime, setOptimisticSeekTime] = useState<number | null>(null);
-  const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (optimisticSeekTime !== null && Math.abs(currentTime - optimisticSeekTime) < 1.5) {
-      setOptimisticSeekTime(null);
-    }
-  }, [currentTime, optimisticSeekTime]);
-
   const duration = totalDuration > 0 ? totalDuration : activeTrack.duration || 1;
-  const displayTime = optimisticSeekTime !== null ? optimisticSeekTime : currentTime;
+  const liveClockTime = usePlaybackTime();
+  const displayTime = liveClockTime;
   const progressPercent = Math.min(Math.max(displayTime / duration, 0), 1);
 
   const handleProgressBarLayout = (e: LayoutChangeEvent) => {
@@ -365,13 +358,7 @@ export function TopMusicPlayerCard({
     const ratio = Math.max(0, Math.min(clickX / progressBarWidth, 1));
     const targetSeconds = ratio * duration;
 
-    // Instant zero-latency visual feedback
-    setOptimisticSeekTime(targetSeconds);
-    if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
-    seekTimeoutRef.current = setTimeout(() => {
-      setOptimisticSeekTime(null);
-    }, 1200);
-
+    playbackClock.seek(targetSeconds);
     onSeek(targetSeconds);
   };
 
@@ -478,6 +465,7 @@ export function TopMusicPlayerCard({
             <View style={styles.progressContainer} pointerEvents="none">
               <View style={styles.progressTrack}>
                 <View
+                  pointerEvents="none"
                   style={[
                     styles.progressFill,
                     { width: `${progressPercent * 100}%` },
@@ -485,6 +473,7 @@ export function TopMusicPlayerCard({
                 />
                 {/* Scrubber Knob */}
                 <View
+                  pointerEvents="none"
                   style={[
                     styles.scrubberThumb,
                     {
