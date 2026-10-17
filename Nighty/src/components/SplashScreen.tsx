@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as SplashScreenNative from 'expo-splash-screen';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -65,6 +66,9 @@ export function SplashScreen({ onFinish, minDurationMs = 2600 }: SplashScreenPro
   const isExitingRef = useRef(false);
 
   useEffect(() => {
+    // Dismiss native splash screen immediately so animated React splash takes over with no flicker
+    void SplashScreenNative.hideAsync().catch(() => {});
+
     // 1. Ambient Glow breathing animation
     const glowLoop = Animated.loop(
       Animated.sequence([
