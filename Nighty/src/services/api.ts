@@ -163,3 +163,14 @@ export const saveSongToLibrary = async (libraryId: string, youtubeUrl: string): 
     method: 'PUT',
     body: JSON.stringify({ youtubeUrl: youtubeUrl.trim() }),
   });
+
+export const deleteSongFromLibrary = async (
+  songId: string,
+  _libraryId?: string,
+): Promise<{ songId: string; libraryId?: string; title?: string }> =>
+  requestWithAuth<{ songId: string; libraryId?: string; title?: string }>(
+    `/mobile/songs/${encodeURIComponent(songId)}`,
+    {
+      method: 'DELETE',
+    },
+  );
