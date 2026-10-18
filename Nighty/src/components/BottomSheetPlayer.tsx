@@ -11,6 +11,7 @@ import {
 import { SongItem } from '../types/api';
 import { formatTime } from '../utils/format';
 import { SongArtwork } from './SongArtwork';
+import { playbackClock, usePlaybackTime } from '../services/playbackClock';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const MINI_HEIGHT = 64;
@@ -48,31 +49,19 @@ export function BottomSheetPlayer({
   const [progressWidth, setProgressWidth] = useState(1);
   const [miniProgressWidth, setMiniProgressWidth] = useState(1);
   const [internalPlaying, setInternalPlaying] = useState<boolean | null>(null);
-  const [optimisticSeekTime, setOptimisticSeekTime] = useState<number | null>(null);
-  const seekTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const activeIsPlaying = internalPlaying !== null ? internalPlaying : isPlaying;
 
   useEffect(() => {
     setInternalPlaying(null);
   }, [isPlaying]);
 
-  useEffect(() => {
-    if (optimisticSeekTime !== null && Math.abs(currentTime - optimisticSeekTime) < 1.5) {
-      setOptimisticSeekTime(null);
-    }
-  }, [currentTime, optimisticSeekTime]);
-
   const duration = totalDuration > 0 ? totalDuration : activeTrack.duration || 1;
-  const displayTime = optimisticSeekTime !== null ? optimisticSeekTime : currentTime;
+  const liveClockTime = usePlaybackTime();
+  const displayTime = liveClockTime;
   const progressPercent = Math.min(Math.max(displayTime / duration, 0), 1);
 
   const handleSeekPress = (targetSeconds: number) => {
-    setOptimisticSeekTime(targetSeconds);
-    if (seekTimeoutRef.current) clearTimeout(seekTimeoutRef.current);
-    seekTimeoutRef.current = setTimeout(() => {
-      setOptimisticSeekTime(null);
-    }, 1200);
+    playbackClock.seek(targetSeconds);
     onSeek(targetSeconds);
   };
 
@@ -160,7 +149,7 @@ export function BottomSheetPlayer({
           }}
           hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
         >
-          <View style={[styles.miniProgressFill, { width: `${progressPercent * 100}%` }]} />
+          <View pointerEvents="none" style={[styles.miniProgressFill, { width: `${progressPercent * 100}%` }]} />
         </Pressable>
 
         <Animated.View style={[styles.miniRow, { opacity: miniOpacity }]}>
@@ -211,8 +200,8 @@ export function BottomSheetPlayer({
             }}
             hitSlop={{ top: 8, bottom: 8, left: 0, right: 0 }}
           >
-            <View style={[styles.progressFill, { width: `${progressPercent * 100}%` }]} />
-            <View style={[styles.scrubberThumb, { left: `${progressPercent * 100}%` }]} />
+            <View pointerEvents="none" style={[styles.progressFill, { width: `${progressPercent * 100}%` }]} />
+            <View pointerEvents="none" style={[styles.scrubberThumb, { left: `${progressPercent * 100}%` }]} />
           </Pressable>
           <View style={styles.progressTimes}>
             <Text style={styles.progressTime}>{formatTime(displayTime)}</Text>
