@@ -36,6 +36,7 @@ type TracksScreenProps = {
   activeTrack: SongItem | null;
   isPlaying: boolean;
   currentTime: number;
+  totalDuration: number;
   onTogglePlay: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -54,6 +55,7 @@ export function TracksScreen({
   activeTrack,
   isPlaying,
   currentTime,
+  totalDuration,
   onTogglePlay,
   onPrevious,
   onNext,
@@ -354,7 +356,7 @@ export function TracksScreen({
           activeTrack={activeTrack}
           isPlaying={isPlaying}
           currentTime={currentTime}
-          totalDuration={activeTrack.duration}
+          totalDuration={totalDuration}
           trackNumber={1}
           trackCount={1}
           onTogglePlay={onTogglePlay}
