@@ -22,6 +22,7 @@ type OfflineScreenProps = {
   onRemove: (songId: string) => void;
   isPlaying: boolean;
   currentTime: number;
+  totalDuration: number;
   onTogglePlay: () => void;
   onPrevious: (libraryId?: string | null) => void;
   onNext: (libraryId?: string | null) => void;
@@ -35,6 +36,7 @@ export function OfflineScreen({
   onRemove,
   isPlaying,
   currentTime,
+  totalDuration,
   onTogglePlay,
   onPrevious,
   onNext,
@@ -277,7 +279,7 @@ export function OfflineScreen({
           onPrevious={() => onPrevious(selectedLibraryId)}
           onNext={() => onNext(selectedLibraryId)}
           currentTime={currentTime}
-          totalDuration={playerTrack.duration}
+          totalDuration={totalDuration}
           trackNumber={Math.max(1, playerIndex + 1)}
           trackCount={playerSongs.length || 1}
           onSeek={onSeek}
