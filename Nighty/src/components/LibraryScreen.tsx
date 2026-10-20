@@ -1,8 +1,10 @@
 import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -57,6 +59,7 @@ type LibraryScreenProps = {
   onToggleRepeat?: () => void;
   isShuffle?: boolean;
   onToggleShuffle?: () => void;
+  onDeleteSong?: (song: SongItem, libraryId: string) => void;
 };
 
 type SongRowItemProps = {
@@ -69,6 +72,7 @@ type SongRowItemProps = {
   canDownload: boolean;
   isDownloadDisabled: boolean;
   onPress: () => void;
+  onLongPress?: () => void;
   onDownloadPress: () => void;
 };
 
@@ -82,6 +86,7 @@ const SongRowItem = React.memo(function SongRowItem({
   canDownload,
   isDownloadDisabled,
   onPress,
+  onLongPress,
   onDownloadPress,
 }: SongRowItemProps) {
   return (
@@ -92,6 +97,8 @@ const SongRowItem = React.memo(function SongRowItem({
         pressed && styles.songRowPressed,
       ]}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={350}
     >
       {/* Cover */}
       <ModularSongArtwork
@@ -200,9 +207,36 @@ export function LibraryScreen({
   onToggleRepeat,
   isShuffle,
   onToggleShuffle,
+  onDeleteSong,
 }: LibraryScreenProps) {
   const selectedLibrary =
     libraries.find((l) => l._id === selectedLibraryId) ?? null;
+
+  const handleConfirmDelete = (song: SongItem) => {
+    if (!selectedLibrary) return;
+    const libId = selectedLibrary._id;
+    const libName = selectedLibrary.name;
+
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm(`Delete "${song.title}" from ${libName}?`);
+      if (confirmed) {
+        onDeleteSong?.(song, libId);
+      }
+    } else {
+      Alert.alert(
+        'Delete Song',
+        `Are you sure you want to delete "${song.title}" from ${libName}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => onDeleteSong?.(song, libId),
+          },
+        ],
+      );
+    }
+  };
   const [shareSelectedLibraryId, setShareSelectedLibraryId] = useState<string | null>(null);
   const [isCreateLibraryVisible, setIsCreateLibraryVisible] = useState(false);
   const [isMenuVisible, setIsMenuVisible] = useState(false);
@@ -573,6 +607,7 @@ export function LibraryScreen({
                   canDownload={song.audioReady}
                   isDownloadDisabled={downloadingSongId !== null}
                   onPress={() => onSongPress(song._id)}
+                  onLongPress={() => handleConfirmDelete(song)}
                   onDownloadPress={() => {
                     if (selectedLibrary) {
                       onDownloadSong(song, selectedLibrary._id, selectedLibrary.name);
